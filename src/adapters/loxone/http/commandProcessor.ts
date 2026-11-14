@@ -35,6 +35,7 @@ export interface LoxoneCommandProcessorOptions {
   fadeController: FadeControllerPort;
   alerts: AlertsPort;
   contentManager: ContentManager;
+  onConfigured?: () => void;
 }
 
 /**
@@ -63,6 +64,7 @@ export class LoxoneCommandProcessor {
       fadeController: options.fadeController,
       alerts: options.alerts,
       contentManager: options.contentManager,
+      onConfigured: options.onConfigured,
     });
   }
 

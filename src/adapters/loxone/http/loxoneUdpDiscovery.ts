@@ -2,46 +2,95 @@ import dgram from 'node:dgram';
 import type { LoxoneHttpConfig } from '@/config/loxone';
 import { createLogger } from '@/shared/logging/logger';
 import type { ConfigPort } from '@/ports/ConfigPort';
+import {
+  loxoneAnnouncementHostname,
+  loxoneAnnouncementMac,
+  loxoneAnnouncementName,
+} from '@/adapters/loxone/discoveryIdentity';
 
 const DEFAULT_PORT = 7070;
+
+export interface LoxoneDiscoveryFields {
+  name: string;
+  mac: string;
+  firmware: string;
+  port: number;
+  hostname: string;
+}
+
+/**
+ * The JSON body a Loxone search gets back. Built from the current config so a
+ * rename or a MAC learned after startup is visible on the next probe.
+ */
+export function buildLoxoneDiscoveryPayload(fields: LoxoneDiscoveryFields): string {
+  return JSON.stringify({
+    t: 'Audioserver',
+    tv: '3',
+    n: fields.name,
+    s: fields.mac,
+    v: fields.firmware,
+    p: String(fields.port),
+    hn: fields.hostname,
+    di: '1',
+  });
+}
+
+export function loxoneDiscoveryFields(
+  config: LoxoneHttpConfig,
+  configPort: ConfigPort,
+): LoxoneDiscoveryFields {
+  const systemConfig = configPort.getSystemConfig();
+  const name = loxoneAnnouncementName(
+    systemConfig?.audioserver?.name,
+    config.mdns.name || 'audioserver',
+  );
+  const mac = loxoneAnnouncementMac(
+    systemConfig?.audioserver?.macId,
+    config.macAddress,
+  );
+  const port = resolveDiscoveryPort(config);
+  return {
+    name,
+    mac,
+    firmware: config.firmwareVersionNumber,
+    port,
+    hostname: loxoneAnnouncementHostname(name, mac),
+  };
+}
+
+function resolveDiscoveryPort(config: LoxoneHttpConfig): number {
+  const appServer = config.servers.find((server) => server.name === 'appHttp');
+  return appServer?.port ?? config.mdns.port;
+}
 
 export class LoxoneUdpDiscovery {
   private readonly log = createLogger('Loxone', 'UDPDiscovery');
   private socket: dgram.Socket | null = null;
   private responder: dgram.Socket | null = null;
-  private responsePayload = Buffer.alloc(0);
-  private readonly fixedTv = '3';
-  private readonly fixedDi = '1';
+  private config: LoxoneHttpConfig | null = null;
+  private configPort: ConfigPort | null = null;
 
   public start(config: LoxoneHttpConfig, configPort: ConfigPort, port: number = DEFAULT_PORT): void {
     if (this.socket) {
       return;
     }
 
+    this.config = config;
+    this.configPort = configPort;
     const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    this.socket = socket;
     const responder = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    this.socket = socket;
     this.responder = responder;
-    this.responsePayload = Buffer.from(
-      this.buildPayload(config, configPort, this.fixedTv, this.fixedDi),
-      'utf8',
-    );
 
-    socket.on('error', (error) => {
-      this.log.warn('udp discovery socket error', {
-        message: error instanceof Error ? error.message : String(error),
-      });
-    });
+    socket.on('error', (error) => this.fail('listener', error));
+    responder.on('error', (error) => this.fail('responder', error));
 
-    socket.on('message', (msg, rinfo) => {
-      const payload = msg.length ? msg : Buffer.alloc(0);
+    socket.on('message', (_msg, rinfo) => {
+      const payload = Buffer.from(this.currentPayload(), 'utf8');
       this.log.info('udp discovery probe received', {
         from: `${rinfo.address}:${rinfo.port}`,
-        length: payload.length,
-        payload: payload.length <= 32 ? payload.toString('hex') : undefined,
       });
-
-      responder.send(this.responsePayload, rinfo.port, rinfo.address, (err) => {
+      responder.send(payload, rinfo.port, rinfo.address, (err) => {
         if (err) {
           this.log.warn('udp discovery response failed', {
             message: err instanceof Error ? err.message : String(err),
@@ -50,36 +99,28 @@ export class LoxoneUdpDiscovery {
         }
         this.log.info('udp discovery response sent', {
           to: `${rinfo.address}:${rinfo.port}`,
-          length: this.responsePayload.length,
-          tv: this.fixedTv,
-          di: this.fixedDi,
+          length: payload.length,
         });
       });
     });
 
-    responder.bind(this.resolveUdpPort(config), () => {
-      this.log.info('udp discovery responder ready', {
-        port: this.resolveUdpPort(config),
-      });
+    const responsePort = resolveDiscoveryPort(config);
+    responder.bind(responsePort, () => {
+      this.log.info('udp discovery responder ready', { port: responsePort });
     });
-
     socket.bind(port, () => {
-      this.log.info('udp discovery listener started', {
-        port,
-        response: this.responsePayload.toString('utf8'),
-      });
+      this.log.info('udp discovery listener started', { port });
     });
   }
 
   public stop(): void {
-    if (!this.socket) {
-      return;
-    }
     const socket = this.socket;
     const responder = this.responder;
     this.socket = null;
     this.responder = null;
-    socket.close(() => {
+    this.config = null;
+    this.configPort = null;
+    socket?.close(() => {
       this.log.info('udp discovery listener stopped');
     });
     responder?.close(() => {
@@ -87,47 +128,35 @@ export class LoxoneUdpDiscovery {
     });
   }
 
-  private buildPayload(config: LoxoneHttpConfig, configPort: ConfigPort, tv: string, di: string): string {
-    const systemConfig = configPort.getSystemConfig();
-    const configuredName = systemConfig?.audioserver?.name?.trim();
-    const friendlyName =
-      configuredName && configuredName.toLowerCase() !== 'unconfigured'
-        ? configuredName
-        : config.mdns.name || 'audioserver';
-    const hostname = this.sanitizeHostname(config.mdns.hostname || friendlyName);
-    const macId = systemConfig?.audioserver?.macId?.trim();
-
-    const payload = {
-      t: 'Audioserver',
-      tv,
-      n: friendlyName,
-      s: this.formatMacAddress(macId || config.macAddress),
-      v: config.firmwareVersionNumber,
-      p: String(this.resolveUdpPort(config)),
-      hn: hostname,
-      di,
-    };
-
-    return JSON.stringify(payload);
-  }
-
-  private sanitizeHostname(value: string): string {
-    const trimmed = value.trim();
-    const withoutLocal = trimmed.endsWith('.local') ? trimmed.slice(0, -6) : trimmed;
-    return withoutLocal.replace(/\s+/g, '-').replace(/\./g, '-') || 'audioserver';
-  }
-
-  private formatMacAddress(raw: string): string {
-    const normalized = raw.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
-    if (normalized.length !== 12) {
-      return raw;
+  private currentPayload(): string {
+    if (!this.config || !this.configPort) {
+      return buildLoxoneDiscoveryPayload({
+        name: 'audioserver',
+        mac: '',
+        firmware: '',
+        port: 0,
+        hostname: 'audioserver',
+      });
     }
-    return normalized.match(/.{2}/g)?.join(':') ?? raw;
+    return buildLoxoneDiscoveryPayload(loxoneDiscoveryFields(this.config, this.configPort));
   }
 
-  private resolveUdpPort(config: LoxoneHttpConfig): number {
-    const appServer = config.servers.find((server) => server.name === 'appHttp');
-    return appServer?.port ?? config.mdns.port;
+  /**
+   * A missing error listener crashes the process. Drop both sockets so the next
+   * start() can bind again instead of treating a dead socket as "already up".
+   */
+  private fail(role: 'listener' | 'responder', error: Error): void {
+    const socket = this.socket;
+    const responder = this.responder;
+    if (!socket && !responder) {
+      return;
+    }
+    this.log.warn('udp discovery socket failed', { role, message: error.message });
+    this.socket = null;
+    this.responder = null;
+    socket?.close();
+    if (responder && responder !== socket) {
+      responder.close();
+    }
   }
-
 }

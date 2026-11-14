@@ -43,6 +43,7 @@ export interface RouteDependencies {
   fadeController: FadeControllerPort;
   alerts: AlertsPort;
   contentManager: ContentManager;
+  onConfigured?: () => void;
 }
 
 /**
@@ -52,7 +53,7 @@ export function registerRoutes(
   router: LoxoneRouter,
   dependencies: RouteDependencies,
 ): void {
-  const secure = createSecureHandlers(dependencies.configPort);
+  const secure = createSecureHandlers(dependencies.configPort, dependencies.config.sessionToken);
   const placeholder = (name: string) => createPlaceholderHandler(name);
   const configHandlers = createConfigHandlers(dependencies.config, {
     onRestart: dependencies.onRestart,
@@ -62,6 +63,7 @@ export function registerRoutes(
     configPort: dependencies.configPort,
     contentManager: dependencies.contentManager,
     spotifyInputService: dependencies.spotifyInputService,
+    onConfigured: dependencies.onConfigured,
   });
   const providerHandlers = createProviderHandlers(dependencies.contentManager, dependencies.loxoneNotifier);
   const globalSearchHandlers = createGlobalSearchHandlers(dependencies.contentManager, dependencies.loxoneNotifier);

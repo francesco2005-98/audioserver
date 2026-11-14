@@ -20,6 +20,9 @@ type RawConfigPayload = {
  */
 export class LoxoneConfigService {
   private readonly log = createLogger('Loxone', 'ConfigService');
+  /** Host we already classified, so a later config push does not probe again. */
+  private confirmedProtocol: { host: string; port: number } | null = null;
+
   constructor(
     private readonly zoneManager: ZoneManagerFacade,
     private readonly configPort: ConfigPort,
@@ -278,19 +281,29 @@ export class LoxoneConfigService {
     }
 
     if (hostIp) {
-      cfg.system.miniserver.ip = hostIp;
+      const previousIp = cfg.system.miniserver.ip;
       const previousPort = cfg.system.miniserver.port;
+      cfg.system.miniserver.ip = hostIp;
       if (hostPort !== undefined) {
         cfg.system.miniserver.port = hostPort;
       }
-      const shouldProbeProtocol =
-        typeof hostPort === 'number' &&
-        Number.isInteger(hostPort) &&
-        hostPort > 0 &&
-        hostPort <= 65535 &&
-        previousPort !== hostPort;
-      if (shouldProbeProtocol) {
-        cfg.system.miniserver.protocol = await this.detectProtocolViaTlsProbe(hostIp, hostPort);
+      const nextPort = cfg.system.miniserver.port;
+      const endpointChanged = previousIp !== hostIp || previousPort !== nextPort;
+      const alreadyConfirmed =
+        this.confirmedProtocol?.host === hostIp && this.confirmedProtocol.port === nextPort;
+      if (
+        typeof nextPort === 'number' &&
+        (endpointChanged || !alreadyConfirmed)
+      ) {
+        const detected = await this.detectProtocolViaTlsProbe(hostIp, nextPort);
+        // A timeout is inconclusive. Recording it as HTTP made every later login
+        // use the wrong scheme, and the same port never triggered another probe.
+        if (detected) {
+          cfg.system.miniserver.protocol = detected;
+          this.confirmedProtocol = { host: hostIp, port: nextPort };
+        } else if (endpointChanged) {
+          this.confirmedProtocol = null;
+        }
       }
     }
     if (masterSerial) {
@@ -357,15 +370,18 @@ export class LoxoneConfigService {
     return parsed;
   }
 
-  private async detectProtocolViaTlsProbe(host: string, port: number): Promise<'http' | 'https'> {
+  private async detectProtocolViaTlsProbe(
+    host: string,
+    port: number,
+  ): Promise<'http' | 'https' | null> {
     const socketHost = this.normalizeSocketHost(host);
     if (!socketHost) {
-      return 'http';
+      return null;
     }
 
-    const isTls = await new Promise<boolean>((resolve) => {
+    const detected = await new Promise<'http' | 'https' | null>((resolve) => {
       let settled = false;
-      const finish = (result: boolean): void => {
+      const finish = (result: 'http' | 'https' | null): void => {
         if (settled) {
           return;
         }
@@ -383,19 +399,34 @@ export class LoxoneConfigService {
         },
         () => {
           socket.end();
-          finish(true);
+          finish('https');
         },
       );
 
-      socket.once('error', () => finish(false));
+      // A TLS alert on a plain HTTP port is "http". No route or a timeout says nothing,
+      // so the next config push tries again instead of sticking on the wrong scheme.
+      socket.once('error', (err: NodeJS.ErrnoException) => {
+        const code = err.code ?? '';
+        if (
+          code === 'ETIMEDOUT' ||
+          code === 'ECONNREFUSED' ||
+          code === 'EHOSTUNREACH' ||
+          code === 'ENETUNREACH' ||
+          code === 'ECONNRESET'
+        ) {
+          finish(null);
+          return;
+        }
+        finish('http');
+      });
       socket.once('timeout', () => {
         socket.destroy();
-        finish(false);
+        finish(null);
       });
-      socket.once('close', () => finish(false));
+      socket.once('close', () => finish(null));
     });
 
-    return isTls ? 'https' : 'http';
+    return detected;
   }
 
   private normalizeSocketHost(host: string): string {
