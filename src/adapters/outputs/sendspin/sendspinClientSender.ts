@@ -5,7 +5,7 @@ import {
   sendspinCore,
   type SendspinSession,
   type SendspinSessionHooks,
-} from '@sonn-audio/node-sendspin';
+} from '@audioserver/node-sendspin';
 import { ClientCapacityGate } from '@/adapters/outputs/sendspin/clientCapacityGate';
 import type { OutputPorts } from '@/adapters/outputs/outputPorts';
 

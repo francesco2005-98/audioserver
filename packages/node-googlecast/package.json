@@ -1,0 +1,23 @@
+{
+  "name": "@audioserver/node-googlecast",
+  "version": "0.1.2",
+  "description": "TypeScript Google Cast (Chromecast) discovery and control library",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.1",
+    "multicast-dns": "^7.2.5",
+    "protobufjs": "^7.2.6"
+  }
+}

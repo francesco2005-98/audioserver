@@ -7,7 +7,7 @@ import type { PlaybackSession } from '@/ports/types/playback';
 import { audioOutputSettings } from '@/ports/types/audioFormat';
 import type { OutputConfigDefinition, ZoneOutput } from '@/ports/OutputsTypes';
 import type { OutputPorts } from '@/adapters/outputs/outputPorts';
-import type { CastDevice, DiscoveredDevice } from '@sonn-audio/node-googlecast';
+import type { CastDevice, DiscoveredDevice } from '@audioserver/node-googlecast';
 import { loadGoogleCastModule } from '@/adapters/outputs/googleCast/googlecastLoader';
 import {
   createJsonNamespaceControllerFactory,

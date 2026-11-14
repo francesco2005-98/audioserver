@@ -12,7 +12,7 @@ import {
 import { LineInIngestRegistry } from '../src/adapters/inputs/linein/lineInIngestRegistry';
 import type { ConfigPort } from '../src/ports/ConfigPort';
 import type { LineInInputConfig } from '../src/domain/config/types';
-import type { SsdpAdvertiser } from '@sonn-audio/node-upnp';
+import type { SsdpAdvertiser } from '@audioserver/node-upnp';
 
 // A line-in whose source is DLNA is a renderer of its own: a control point (a WiiM's
 // "DLNA Out") casts at it, and the cast comes out as that input's PCM in the ingest

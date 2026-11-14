@@ -19,7 +19,7 @@ const RELEASES = {
   'https://api.github.com/repos/o/ui/releases/latest': { tag_name: 'v5.1.0' },
   'https://api.github.com/repos/o/player/releases/latest': { tag_name: 'v0.1.0' },
   'https://api.github.com/repos/o/audioserver-client/releases/latest': { tag_name: 'v1.4.0' },
-  'https://registry.npmjs.org/@sonn-audio/node-sendspin': {
+  'https://registry.npmjs.org/@audioserver/node-sendspin': {
     'dist-tags': { latest: '0.3.8' },
     description: 'Sendspin',
   },
@@ -43,7 +43,7 @@ function harness(overrides: { declared?: Record<string, string> } = {}): Harness
       if (url in RELEASES) return RELEASES[url];
       throw new UpstreamHttpError(`not found ${url}`, 404, null);
     },
-    declaredPackages: () => overrides.declared ?? { '@sonn-audio/node-sendspin': '^0.3.0' },
+    declaredPackages: () => overrides.declared ?? { '@audioserver/node-sendspin': '^0.3.0' },
     now: () => clock,
     coreRepo: 'o/core',
     uiRepo: 'o/ui',
@@ -79,7 +79,7 @@ test('the update check reports the newest tags it found', async () => {
       playerMinCore: null,
       playerPrereleaseMinCore: null,
       audioserverClient: '1.4.0',
-      components: { '@sonn-audio/node-sendspin': '0.3.8' },
+      components: { '@audioserver/node-sendspin': '0.3.8' },
       componentDescriptions: undefined,
     },
   );
@@ -178,7 +178,7 @@ test('a spent GitHub budget does not hide the component versions', async () => {
   // The two halves are independent: components come from npm, which has no such limit.
   // Failing the whole check would have taken them down with GitHub.
   assert.equal(result.latest.ui, null, 'GitHub is unknown');
-  assert.deepEqual(result.latest.components, { '@sonn-audio/node-sendspin': '0.3.8' });
+  assert.deepEqual(result.latest.components, { '@audioserver/node-sendspin': '0.3.8' });
 });
 
 test('the stated reset drives the wait, and nonsense falls back to a fixed one', () => {

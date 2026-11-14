@@ -5,8 +5,8 @@ import type { ZoneConfig } from '@/domain/config/types';
 import type { AirplayInstanceController } from '@/adapters/inputs/airplay/airplayInstance';
 import type { SendspinHookRegistryPort } from '@/adapters/outputs/sendspin/sendspinHookRegistry';
 import type { PlaybackMetadata } from '@/ports/types/playback';
-import { sendspinCore, SourceCommand } from '@sonn-audio/node-sendspin';
-import type { SendspinSourceStreamFormat } from '@sonn-audio/node-sendspin';
+import { sendspinCore, SourceCommand } from '@audioserver/node-sendspin';
+import type { SendspinSourceStreamFormat } from '@audioserver/node-sendspin';
 
 /** What a Audioserver Client reports about the phone it is playing, as its status block carries it. */
 export type BluetoothNowPlaying = {

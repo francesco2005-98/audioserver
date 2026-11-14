@@ -14,7 +14,7 @@ import {
   sendRemoteCommand,
   type ReceiverAdvertisement,
   type ReceiverEvent,
-} from '@sonn-audio/node-airplay';
+} from '@audioserver/node-airplay';
 
 /** How long a sender may go quiet before we call it a pause. */
 const AUDIO_IDLE_PAUSE_MS = 1500;

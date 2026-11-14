@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolveDataDir } from '@/shared/utils/file';
 import type { PcmBitDepth } from '@/ports/types/audioFormat';
-import type { PlayerFormatWithBitDepth } from '@sonn-audio/node-sendspin';
+import type { PlayerFormatWithBitDepth } from '@audioserver/node-sendspin';
 
 type SendspinFormat = PlayerFormatWithBitDepth<PcmBitDepth>;
 

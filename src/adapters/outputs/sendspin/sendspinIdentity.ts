@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { Identity } from '@sonn-audio/node-sendspin';
+import { Identity } from '@audioserver/node-sendspin';
 import { createLogger } from '@/shared/logging/logger';
 import { resolveDataDir } from '@/shared/utils/file';
 

@@ -1,4 +1,4 @@
-import { readCapabilities } from '@sonn-audio/node-airplay';
+import { readCapabilities } from '@audioserver/node-airplay';
 import { createLogger } from '@/shared/logging/logger';
 import type { AirplaySender } from '@/adapters/outputs/airplay/airplaySender';
 import { Ap2Sender } from '@/adapters/outputs/airplay/ap2Sender';

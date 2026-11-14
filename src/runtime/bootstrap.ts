@@ -12,7 +12,7 @@ import { ZoneSessionStats } from '@/application/zones/zoneSessionStats';
 import { MediaServer } from '@/adapters/mediaserver/mediaServer';
 import { SubsonicApi } from '@/adapters/subsonic/subsonicApi';
 import { WebdavServer } from '@/adapters/webdav/webdavServer';
-import { SsdpAdvertiser } from '@sonn-audio/node-upnp';
+import { SsdpAdvertiser } from '@audioserver/node-upnp';
 import { DlnaInputService } from '@/adapters/inputs/dlna/dlnaInputService';
 import { BluetoothInputService } from '@/adapters/inputs/bluetooth/bluetoothInputService';
 import { CustomRadioStore } from '@/adapters/content/providers/customRadioStore';
@@ -72,7 +72,7 @@ import { AudioserverCorePeerRegistry } from '@/adapters/discovery/audioserverCor
 import { SnapcastMdnsService } from '@/adapters/outputs/snapcast/snapcastMdnsService';
 import { SendspinServerAdvertiser } from '@/adapters/outputs/sendspin/sendspinServerAdvertiser';
 import { loadSendspinIdentity } from '@/adapters/outputs/sendspin/sendspinIdentity';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
 import type { MdnsLifecycleService } from '@/adapters/discovery/mdnsLifecycle';
 import { createAirplayGroupController } from '@/application/outputs/airplayGroupController';
 import { createSnapcastGroupController } from '@/application/outputs/snapcastGroupController';

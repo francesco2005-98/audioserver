@@ -1,6 +1,6 @@
 import { createLogger } from '@/shared/logging/logger';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
-import type { SendspinSessionHooks } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
+import type { SendspinSessionHooks } from '@audioserver/node-sendspin';
 
 type HookEntry = {
   hooks: Set<SendspinSessionHooks>;

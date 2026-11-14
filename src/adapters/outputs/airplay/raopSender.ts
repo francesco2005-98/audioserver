@@ -7,7 +7,7 @@ import {
   setMetadata as sendMetadata,
   setArtwork as sendArtwork,
   type RaopSession,
-} from '@sonn-audio/node-airplay';
+} from '@audioserver/node-airplay';
 import { createLogger } from '@/shared/logging/logger';
 import { collapseRepeats } from '@/shared/logging/collapseRepeats';
 import type { AirplaySender } from '@/adapters/outputs/airplay/airplaySender';

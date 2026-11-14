@@ -22,14 +22,14 @@ import {
   type SendspinGroupCommand,
   type SendspinPairingRequiredReason,
   type SendspinPlayerStateUpdate,
-} from '@sonn-audio/node-sendspin';
+} from '@audioserver/node-sendspin';
 import type {
   PreferredOutput,
   OutputConfigDefinition,
   OutputSyncStatus,
   ZoneOutput,
 } from '@/ports/OutputsTypes';
-import type { SendspinSession } from '@sonn-audio/node-sendspin';
+import type { SendspinSession } from '@audioserver/node-sendspin';
 import type { OutputPorts } from '@/adapters/outputs/outputPorts';
 import type { SendspinDeclaredFormat } from '@/application/outputs/sendspinGroupController';
 import type { PlaybackSource } from '@/ports/EngineTypes';

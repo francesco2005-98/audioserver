@@ -5,7 +5,7 @@ import {
   sendspinCore,
   type SendspinSession,
   type SendspinSessionHooks,
-} from '@sonn-audio/node-sendspin';
+} from '@audioserver/node-sendspin';
 import { test } from './testHarness';
 import { buildZoneOutputs } from '../src/adapters/outputs/factory';
 import { AudioAnalysisService, type AudioAnalysisListener } from '../src/application/audio/audioAnalysisService';

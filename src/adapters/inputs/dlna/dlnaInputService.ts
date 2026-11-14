@@ -11,7 +11,7 @@ import {
   UpnpMediaRenderer,
   RENDERER_PATHS,
   type TransportState,
-} from '@sonn-audio/node-upnp';
+} from '@audioserver/node-upnp';
 import { DlnaRendererHandler } from '@/adapters/inputs/dlna/dlnaRendererHandler';
 
 /** Absolute path prefix for one zone's renderer, under the shared HTTP server. */

@@ -3,7 +3,7 @@ import { test } from './testHarness';
 import { BluetoothInputService } from '../src/adapters/inputs/bluetooth/bluetoothInputService';
 import { bluetoothClientId } from '../src/domain/inputs/bluetoothIdentity';
 import type { ZoneConfig } from '../src/domain/config/types';
-import type { SendspinSessionHooks } from '@sonn-audio/node-sendspin';
+import type { SendspinSessionHooks } from '@audioserver/node-sendspin';
 
 type Registered = { clientId: string; hooks: SendspinSessionHooks; stopped: boolean };
 

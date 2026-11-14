@@ -1,4 +1,4 @@
-import { serverNowUs } from '@sonn-audio/node-sendspin';
+import { serverNowUs } from '@audioserver/node-sendspin';
 
 /**
  * Per-client send-ahead backpressure model.

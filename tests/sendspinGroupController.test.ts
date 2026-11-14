@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from './testHarness';
-import { PlaybackStateType, sendspinCore } from '@sonn-audio/node-sendspin';
+import { PlaybackStateType, sendspinCore } from '@audioserver/node-sendspin';
 import {
   sendspinGroupController,
   type SendspinDeclaredFormat,

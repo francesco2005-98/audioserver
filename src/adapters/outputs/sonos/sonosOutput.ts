@@ -14,7 +14,7 @@ import {
   type Container as SonosContainer,
   type SonosGroup,
   type SonosPlayer,
-} from '@sonn-audio/node-sonos';
+} from '@audioserver/node-sonos';
 import { resolveDlnaEndpoints, type DlnaEndpointInfo } from '@/adapters/outputs/dlna/dlnaDiscovery';
 import { resolveSessionCover, isHttpUrl } from '@/shared/coverArt';
 import {
