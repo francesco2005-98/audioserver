@@ -438,8 +438,28 @@ export interface StreamingServiceConfig {
   deezerArl?: string;
   /** Optional Tidal access token if provider === 'tidal' */
   tidalAccessToken?: string;
+  /** Refresh token from the device sign-in, kept so playback can renew the access token. */
+  tidalRefreshToken?: string;
+  /** Unix ms when `tidalAccessToken` stops being accepted. */
+  tidalTokenExpiresAt?: number;
   /** Optional Tidal country code if provider === 'tidal' */
   tidalCountryCode?: string;
+  /** Client the device sign-in ran as, when it was not taken from the environment. */
+  tidalClientId?: string;
+  tidalClientSecret?: string;
+  /** Stream quality asked of Tidal. Playback falls back to LOSSLESS when unset. */
+  tidalQuality?: 'LOW' | 'HIGH' | 'LOSSLESS' | 'HI_RES_LOSSLESS';
+  /**
+   * Who is signed in. Tokens stay in the fields above; this is what the admin
+   * screen is allowed to show.
+   */
+  tidal?: {
+    userId?: string;
+    userName?: string;
+    countryCode?: string;
+    refreshError?: string;
+    deliveredQuality?: 'LOW' | 'HIGH' | 'LOSSLESS' | 'HI_RES_LOSSLESS';
+  };
   /**
    * Optional SoundCloud OAuth token if provider === 'soundcloud'. Public
    * browse/search/charts and preview playback work without it; a token unlocks

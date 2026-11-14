@@ -92,6 +92,7 @@ import { MiniserverAuthClient } from '@/adapters/http/adminApi/auth/miniserverAu
 import { buildAuthRoutes } from '@/adapters/http/adminApi/auth/authHandlers';
 import { buildAppleMusicRoutes } from '@/adapters/http/adminApi/applemusic/appleMusicHandlers';
 import { buildAmazonMusicRoutes } from '@/adapters/http/adminApi/amazonmusic/amazonMusicHandlers';
+import { buildTidalRoutes } from '@/adapters/http/adminApi/tidal/tidalHandlers';
 import { buildAlertsRoutes } from '@/adapters/http/adminApi/alerts/alertsHandlers';
 import { buildSubsonicRoutes } from '@/adapters/http/adminApi/subsonic/subsonicHandlers';
 import { buildMqttRoutes } from '@/adapters/http/adminApi/mqtt/mqttHandlers';
@@ -295,6 +296,12 @@ export class AdminApiHandler {
         readBinaryBody: (req, res, max) => readBinaryBody(req, res, max),
         sendJson: (res, status, payload) => sendJson(res, status, payload),
         sendHtml: (res, status, html) => sendHtml(res, status, html),
+      }),
+      ...buildTidalRoutes({
+        log: this.log,
+        configPort: this.configPort,
+        readJsonBody: (req, res) => readJsonBody(req, res),
+        sendJson: (res, status, payload) => sendJson(res, status, payload),
       }),
       ...buildAmazonMusicRoutes({
         log: this.log,

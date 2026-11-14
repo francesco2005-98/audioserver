@@ -55,6 +55,7 @@ import './beoremoteKeys.test';
 import './nodeVersionGuard.test';
 import './localLibraryStore.rollup.test';
 import './airplayAdvertisement.test';
+import './tidalLogin.test';
 import './airplaySessionEnd.test';
 import './bareSpotifyId.test';
 import './airplayLane.test';
