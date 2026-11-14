@@ -11,6 +11,7 @@ import type { SpotifyServiceManagerProvider } from '@/adapters/content/providers
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { MusicAssistantStreamService } from '@/adapters/inputs/musicassistant/musicAssistantStreamService';
 import type { StreamingServiceConfig } from '@/domain/config/types';
+import { takeTidalLogin } from '@/adapters/content/providers/tidal/tidalLogin';
 import {
   buildSpotifyAuthLink,
   deleteSpotifyAccount,
@@ -220,7 +221,9 @@ async function handleStreamingServiceCreate(
   res: ServerResponse,
   deps: SpotifyHandlerDeps,
 ): Promise<void> {
-  const body = (await deps.readJsonBody(req, res)) as Partial<StreamingServiceConfig> | null;
+  const body = (await deps.readJsonBody(req, res)) as
+    | (Partial<StreamingServiceConfig> & { tidalLoginId?: string })
+    | null;
   if (res.writableEnded) {
     return;
   }
@@ -327,6 +330,49 @@ async function handleStreamingServiceCreate(
       return;
     }
   }
+  const tidalLoginId = typeof body?.tidalLoginId === 'string' ? body.tidalLoginId.trim() : '';
+  const tidalSession = provider === 'tidal' && tidalLoginId ? takeTidalLogin(tidalLoginId) : undefined;
+  if (provider === 'tidal' && tidalLoginId && !tidalSession) {
+    deps.sendJson(res, 400, {
+      error: 'tidal-login-expired',
+      message: 'This Tidal sign-in has expired. Sign in again.',
+    });
+    return;
+  }
+  const tidalQuality = body?.tidalQuality;
+  const tidalFields: Partial<StreamingServiceConfig> =
+    provider === 'tidal'
+      ? {
+          ...(tidalQuality === 'LOW' ||
+          tidalQuality === 'HIGH' ||
+          tidalQuality === 'LOSSLESS' ||
+          tidalQuality === 'HI_RES_LOSSLESS'
+            ? { tidalQuality }
+            : {}),
+          ...(typeof body?.tidalClientId === 'string' && body.tidalClientId.trim()
+            ? { tidalClientId: body.tidalClientId.trim() }
+            : {}),
+          ...(typeof body?.tidalClientSecret === 'string' && body.tidalClientSecret.trim()
+            ? { tidalClientSecret: body.tidalClientSecret.trim() }
+            : {}),
+          ...(tidalSession
+            ? {
+                tidalAccessToken: tidalSession.accessToken,
+                tidalRefreshToken: tidalSession.refreshToken,
+                tidalTokenExpiresAt: tidalSession.expiresAt,
+                tidalCountryCode: tidalSession.countryCode,
+                tidalClientId: tidalSession.clientId,
+                tidalClientSecret: tidalSession.clientSecret,
+                tidal: {
+                  userId: tidalSession.userId,
+                  userName: tidalSession.userName,
+                  countryCode: tidalSession.countryCode,
+                },
+              }
+            : {}),
+        }
+      : {};
+
   const defaultLabel =
     provider === 'applemusic'
       ? 'Apple Music'
@@ -394,6 +440,7 @@ async function handleStreamingServiceCreate(
       typeof body?.soundcloudClientId === 'string' && body.soundcloudClientId.trim()
         ? body.soundcloudClientId.trim()
         : undefined,
+    ...tidalFields,
   };
 
   // Only when there is a new one: the update below merges over the stored account, and an

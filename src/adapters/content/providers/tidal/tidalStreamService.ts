@@ -9,6 +9,7 @@ import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { resolveProxyHost, resolveProxyPort } from '@/shared/urlProxy';
 import { pruneExpiredSessions, type StreamProxyRoute } from '@/shared/streamProxyRoute';
+import { refreshTidalAccessToken } from '@/adapters/content/providers/tidal/tidalLogin';
 
 const TIDAL_API_BASE = 'https://api.tidal.com/v1';
 
@@ -150,6 +151,31 @@ export class TidalStreamService {
     return { providerId: parsed.providerKey, trackId: parsed.id, bridge };
   }
 
+  private async refreshBridgeToken(bridge: StreamingServiceConfig): Promise<boolean> {
+    const refreshToken = bridge.tidalRefreshToken?.trim();
+    const clientId = bridge.tidalClientId?.trim();
+    const clientSecret = bridge.tidalClientSecret?.trim();
+    if (!refreshToken || !clientId || !clientSecret) return false;
+    const next = await refreshTidalAccessToken({ clientId, clientSecret, refreshToken });
+    if (!next) {
+      bridge.tidal = { ...bridge.tidal, refreshError: 'Tidal did not renew the session. Sign in again.' };
+      return false;
+    }
+    bridge.tidalAccessToken = next.accessToken;
+    if (next.refreshToken) bridge.tidalRefreshToken = next.refreshToken;
+    bridge.tidalTokenExpiresAt = Date.now() + next.expiresIn * 1000;
+    if (bridge.tidal) delete bridge.tidal.refreshError;
+    await this.configPort.updateConfig((cfg) => {
+      const found = cfg.content?.streamingServices?.find((service) => service.id === bridge.id);
+      if (!found) return;
+      found.tidalAccessToken = bridge.tidalAccessToken;
+      found.tidalRefreshToken = bridge.tidalRefreshToken;
+      found.tidalTokenExpiresAt = bridge.tidalTokenExpiresAt;
+      found.tidal = bridge.tidal;
+    });
+    return true;
+  }
+
   private buildHeaders(bridge: StreamingServiceConfig): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -167,14 +193,17 @@ export class TidalStreamService {
       return null;
     }
     const url = new URL(`${TIDAL_API_BASE}/tracks/${encodeURIComponent(request.trackId)}/playbackinfopostpaywall`);
-    url.searchParams.set('audioquality', 'LOSSLESS');
+    url.searchParams.set('audioquality', request.bridge.tidalQuality || 'LOSSLESS');
     url.searchParams.set('playbackmode', 'STREAM');
     url.searchParams.set('assetpresentation', 'FULL');
     if (request.bridge.tidalCountryCode) {
       url.searchParams.set('countryCode', request.bridge.tidalCountryCode);
     }
     try {
-      const res = await fetch(url.toString(), { headers: this.buildHeaders(request.bridge) });
+      let res = await fetch(url.toString(), { headers: this.buildHeaders(request.bridge) });
+      if (res.status === 401 && (await this.refreshBridgeToken(request.bridge))) {
+        res = await fetch(url.toString(), { headers: this.buildHeaders(request.bridge) });
+      }
       if (!res.ok) {
         this.log.warn('tidal playback info failed', { status: res.status, trackId: request.trackId });
         return null;
