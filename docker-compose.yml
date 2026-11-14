@@ -1,6 +1,18 @@
+# Audioserver, built from this repository.
+#
+# Coolify: create a resource from this Git repository and choose Docker Compose.
+# This file is the one it should use. The image is built here; there is no
+# registry image to pull. After the first start the admin and the player are at
+# http://<host>:7090.
+#
+# Host networking is required. Loxone, Sonos, AirPlay and the speaker search
+# all use multicast and fixed UDP ports, which a bridged Coolify network does
+# not forward. The proxy in front of Coolify is not used for this service.
 services:
   audioserver:
-    container_name: audioserver
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: audioserver:latest
     hostname: audioserver
     restart: unless-stopped
@@ -16,6 +28,14 @@ services:
       - DAC_READ_SEARCH
     security_opt:
       - apparmor:unconfined
+    volumes:
+      - audioserver-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7090/api/v1/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     # Power Manager note:
     # - gpioset needs the relevant /dev/gpiochip* device inside the container.
     # - USB HID relay boards via crelay need the matching /dev/hidraw* device.
@@ -23,3 +43,6 @@ services:
     # devices:
     #   - /dev/gpiochip0:/dev/gpiochip0
     #   - /dev/hidraw1:/dev/hidraw1
+
+volumes:
+  audioserver-data:

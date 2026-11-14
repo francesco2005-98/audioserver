@@ -9,10 +9,17 @@ It can run on its own or as a Loxone Audioserver.
 ## Quick start
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-Then open `http://<server-ip>:7090`. **Player** is the client, **Admin** is the setup surface.
+`docker-compose.yml` builds the image from the Dockerfile in this repository and keeps
+configuration under the `audioserver-data` volume. Then open `http://<server-ip>:7090`.
+**Player** is the client, **Admin** is the setup surface.
+
+Coolify uses the same file. Add the Git repository as a Docker Compose resource and
+leave the compose path at `docker-compose.yml`. The service uses the host network so
+speaker discovery works, and is reached at port 7090 on the machine, not through the
+Coolify proxy.
 Create the admin account and walk the three steps: **Content** — add your music. **Access** —
 switch on how to reach it. **Zones** — only if you want rooms.
 
