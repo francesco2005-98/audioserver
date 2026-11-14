@@ -55,14 +55,8 @@ class SonosGroupController {
       return false;
     }
     const leaderUdn = await leader.ensureDeviceInfo();
-    if (leaderUdn) {
-      const leaderS2GroupId = leader.getS2GroupId();
-      if (leaderS2GroupId) {
-        return output.joinToLeaderS2(leaderS2GroupId);
-      }
-      return output.joinToLeader(leaderUdn);
-    }
-    return false;
+    const leaderS2GroupId = leader.getS2GroupId();
+    return joinMember(output, leaderUdn, leaderS2GroupId);
   }
 
   public async syncGroupMembers(leader: SonosGroupParticipant): Promise<void> {
@@ -80,19 +74,7 @@ class SonosGroupController {
     for (const memberId of members) {
       const output = this.outputs.get(memberId);
       if (!output) continue;
-      try {
-        if (leaderS2GroupId) {
-          await output.joinToLeaderS2(leaderS2GroupId);
-        } else if (leaderUdn) {
-          await output.joinToLeader(leaderUdn);
-        }
-      } catch (err) {
-        this.log.debug('sonos join failed', {
-          leader: group.leader,
-          member: memberId,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
+      await this.joinLogged(group.leader, memberId, output, leaderUdn, leaderS2GroupId);
     }
   }
 
@@ -109,28 +91,22 @@ class SonosGroupController {
     const members = new Set<number>(record.members);
     members.delete(record.leader);
     const previous = this.lastMembersByLeader.get(record.leader) ?? new Set<number>();
-    this.lastMembersByLeader.set(record.leader, members);
+    // Only members that actually joined are remembered. A failed join used to be
+    // recorded too, so the next group update skipped it and the speaker stayed alone.
+    const joined = new Set<number>();
 
     for (const memberId of members) {
       if (previous.has(memberId)) {
+        joined.add(memberId);
         continue;
       }
       const output = this.outputs.get(memberId);
       if (!output) continue;
-      try {
-        if (leaderS2GroupId) {
-          await output.joinToLeaderS2(leaderS2GroupId);
-        } else if (leaderUdn) {
-          await output.joinToLeader(leaderUdn);
-        }
-      } catch (err) {
-        this.log.debug('sonos join failed', {
-          leader: record.leader,
-          member: memberId,
-          message: err instanceof Error ? err.message : String(err),
-        });
+      if (await this.joinLogged(record.leader, memberId, output, leaderUdn, leaderS2GroupId)) {
+        joined.add(memberId);
       }
     }
+    this.lastMembersByLeader.set(record.leader, joined);
 
     for (const memberId of previous) {
       if (members.has(memberId)) {
@@ -147,6 +123,25 @@ class SonosGroupController {
           message: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+  }
+
+  private async joinLogged(
+    leaderId: number,
+    memberId: number,
+    output: SonosGroupParticipant,
+    leaderUdn: string | null,
+    leaderS2GroupId: string | null,
+  ): Promise<boolean> {
+    try {
+      return await joinMember(output, leaderUdn, leaderS2GroupId);
+    } catch (err) {
+      this.log.debug('sonos join failed', {
+        leader: leaderId,
+        member: memberId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return false;
     }
   }
 
@@ -169,6 +164,28 @@ class SonosGroupController {
       }
     }
   }
+}
+
+/**
+ * Prefer the speaker's own group API, and fall back to the UPnP join when that
+ * is unavailable. An S2 group id that the member cannot use must not be the end
+ * of the attempt: the SOAP `x-rincon` join still works on the same speaker.
+ */
+async function joinMember(
+  output: SonosGroupParticipant,
+  leaderUdn: string | null,
+  leaderS2GroupId: string | null,
+): Promise<boolean> {
+  if (leaderS2GroupId) {
+    const joined = await output.joinToLeaderS2(leaderS2GroupId);
+    if (joined) {
+      return true;
+    }
+  }
+  if (leaderUdn) {
+    return output.joinToLeader(leaderUdn);
+  }
+  return false;
 }
 
 export const sonosGroupController: SonosGroupCoordinator = new SonosGroupController();

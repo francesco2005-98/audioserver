@@ -6,6 +6,7 @@ import {
   readSonosStatus,
   resolveSonosCoordinatorHost,
 } from '../src/adapters/outputs/sonos/sonosDiscovery';
+import { sonosHttpHost } from '../src/domain/outputs/sonosIdentity';
 
 // The Sonos picker listed speakers as "192.168.1.20 - Sonos Beam" or "Living Room (LF,RF)":
 // the description's friendlyName names the box, and S2's /status/zp only has a ZoneName with
@@ -30,6 +31,12 @@ const S2_DESCRIPTION = `<?xml version="1.0" encoding="utf-8"?>
     </deviceList>
   </device>
 </root>`;
+
+test('an IPv6 Sonos address keeps its port outside the host', () => {
+  assert.equal(sonosHttpHost('192.168.1.20'), '192.168.1.20');
+  assert.equal(sonosHttpHost('fe80::1'), '[fe80::1]');
+  assert.equal(sonosHttpHost('[fe80::1]'), '[fe80::1]');
+});
 
 test('the description names the room the user set, not the address and model', () => {
   const description = readSonosDescription(S2_DESCRIPTION);

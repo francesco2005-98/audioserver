@@ -126,6 +126,7 @@ import './sourceResolver.test';
 import './beolinkStateController.test';
 import './sonosEndpointResolution.test';
 import './sonosDiscovery.test';
+import './sonosGrouping.test';
 import './sonosTransportResilience.test';
 import './externalStateRouter.test';
 import './equalizerRestartScheduler.test';

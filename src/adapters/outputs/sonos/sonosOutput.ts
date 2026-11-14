@@ -26,7 +26,7 @@ import {
 } from '@/domain/outputs/streamProfilePolicy';
 import { buildBaseUrl, normalizeStreamUrl, resolveAbsoluteUrl, upsertQueryParam } from '@/shared/streamUrl';
 import { decodeAudiopath } from '@/domain/zones/audiopath';
-import { SONOS_OWN_CONTAINER_SERVICE_ID } from '@/domain/outputs/sonosIdentity';
+import { SONOS_OWN_CONTAINER_SERVICE_ID, sonosHttpHost } from '@/domain/outputs/sonosIdentity';
 import {
   discoverSonosDevice,
   resolveSonosCoordinatorHost,
@@ -264,8 +264,6 @@ export class SonosOutput implements ZoneOutput {
       const httpStreamUri = this.withPrimeToken(this.normalizeStreamUri(uri), session);
       const s2Played = await this.playViaS2(httpStreamUri, session);
       if (s2Played) {
-        this.playInProgress = false;
-        void this.applyPendingVolume('play-s2');
         // Members are pulled into the leader's Sonos group on every play, as the SOAP path below
         // does. The group can have come apart on the speakers since it was formed (used on their
         // own, regrouped in the Sonos app), and only a play is a moment to put it back (#411).
@@ -284,8 +282,10 @@ export class SonosOutput implements ZoneOutput {
       await this.sendPlaybackWithSoap(httpStreamUri, session);
     } finally {
       this.playInProgress = false;
+      // A volume change that arrived while the transport was being swapped, including one
+      // that arrived while this speaker was joining a group, is applied once that swap is done.
+      void this.applyPendingVolume('play');
     }
-    void this.applyPendingVolume('play-soap');
   }
 
   public async pause(session: PlaybackSession | null): Promise<void> {
@@ -559,7 +559,7 @@ export class SonosOutput implements ZoneOutput {
     if (!host) {
       return null;
     }
-    const url = `http://${host}:1400/xml/device_description.xml`;
+    const url = `http://${sonosHttpHost(host)}:1400/xml/device_description.xml`;
     const controller = new AbortController();
     this.controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), 2000);
@@ -589,7 +589,7 @@ export class SonosOutput implements ZoneOutput {
   }
 
   private async fetchDeviceInfoFromStatus(host: string): Promise<string | null> {
-    const url = `http://${host}:1400/status/zp`;
+    const url = `http://${sonosHttpHost(host)}:1400/status/zp`;
     const controller = new AbortController();
     this.controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), 2000);
@@ -1064,7 +1064,9 @@ export class SonosOutput implements ZoneOutput {
       if (options.softFaultOk) {
         return true;
       }
-      return options.optional ?? false;
+      // `optional` only softens the log. Callers of join and volume treat this boolean as
+      // "the speaker accepted it", so a fault must stay a failure or it is never retried.
+      return false;
     } catch (error) {
       const durationMs = Math.max(0, Date.now() - startedAt);
       const message = error instanceof Error ? error.message : String(error);
@@ -1102,7 +1104,7 @@ export class SonosOutput implements ZoneOutput {
           timeoutMs,
         });
       }
-      return options.optional ?? false;
+      return false;
     } finally {
       clearTimeout(timeout);
       this.controllers.delete(controller);
