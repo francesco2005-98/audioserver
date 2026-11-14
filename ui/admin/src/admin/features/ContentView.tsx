@@ -970,6 +970,14 @@ function YtMusicHealthPanel({
 const YTMUSIC_STATUS_POLL_ATTEMPTS = 8;
 const YTMUSIC_STATUS_POLL_MS = 3_000;
 
+/** Absolute redirect Spotify must have registered. A bare path is rejected. */
+function spotifyRedirectUri(): string {
+  if (typeof window === 'undefined') {
+    return '/callbacks/spotify/';
+  }
+  return `${window.location.origin}/callbacks/spotify/`;
+}
+
 export default function ContentView(): JSX.Element {
   const { t } = useTranslation();
   const [loading, setLoading] = React.useState(true);
@@ -4024,17 +4032,13 @@ export default function ContentView(): JSX.Element {
                   <div className="content-spec-row">
                     <span className="content-spec-label">{t('content.spotify.spec.redirectUri')}</span>
                     <span className="content-spec-value">
-                      /callbacks/spotify/
+                      {spotifyRedirectUri()}
                     </span>
                     <button
                       type="button"
                       className="content-spec-copy"
                       title={t('content.spotify.spec.copy')}
-                      onClick={() =>
-                        void navigator.clipboard?.writeText(
-                          '/callbacks/spotify/',
-                        )
-                      }
+                      onClick={() => void navigator.clipboard?.writeText(spotifyRedirectUri())}
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="9" y="9" width="11" height="11" rx="2" />

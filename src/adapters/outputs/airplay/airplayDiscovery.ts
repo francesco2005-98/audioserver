@@ -1,4 +1,5 @@
 import type { AirplayDeviceDescriptor } from '@/ports/OutputDiscoveryPort';
+import { airplayModelFromTxt, isOwnAirplayModel } from '@/domain/outputs/airplayIdentity';
 import Bonjour from 'bonjour-service';
 import { createLogger } from '@/shared/logging/logger';
 
@@ -35,8 +36,7 @@ export async function discoverAirplayDevices(timeoutMs = 5000): Promise<AirplayD
 
     const handleService = (service: any, advertisedProtocol: 'airplay' | 'raop'): void => {
       const txt = service.txt as Record<string, unknown> | undefined;
-      const model = typeof txt?.model === 'string' ? txt.model.toLowerCase() : '';
-      if (model === 'audioserverairplay') {
+      if (isOwnAirplayModel(airplayModelFromTxt(txt))) {
         return;
       }
       const protocol =

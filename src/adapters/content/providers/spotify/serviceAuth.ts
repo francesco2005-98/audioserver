@@ -20,13 +20,17 @@ interface BuildLinkParams {
 }
 
 /** Prefer the host the browser actually used. Fall back to the configured LAN address. */
-export function spotifyCallbackOrigin(hostHeader: string | undefined, configuredIp?: string): string {
+export function spotifyCallbackOrigin(
+  hostHeader: string | undefined,
+  configuredIp?: string,
+  protocol: 'http' | 'https' = 'http',
+): string {
   const headerHost = hostHeader?.split(',')[0]?.trim();
   if (headerHost) {
-    return `http://${headerHost}`;
+    return `${protocol}://${headerHost}`;
   }
   const host = resolveCoverHost(configuredIp);
-  return `http://${host}:${loadEnvironment().httpPort}`;
+  return `${protocol}://${host}:${loadEnvironment().httpPort}`;
 }
 
 export function resolveSpotifyRedirectUri(cfg: AudioServerConfig, callbackOrigin: string): string {

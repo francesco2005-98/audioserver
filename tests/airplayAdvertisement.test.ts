@@ -7,6 +7,7 @@ import type { AirplayInstanceController } from '../src/adapters/inputs/airplay/a
 import type { MdnsPort, MdnsPublishOptions } from '../src/ports/MdnsPort';
 import type { PlayerRegistryPort } from '../src/ports/PlayerRegistryPort';
 import type { ZoneAirplayConfig } from '../src/domain/config/types';
+import { OWN_AIRPLAY_MODEL, airplayModelFromTxt, isOwnAirplayModel } from '../src/domain/outputs/airplayIdentity';
 
 // #363. Moving the receiver to node-airplay left the mDNS advertisement to the caller, and the
 // caller let the responder default the SRV target to this machine's own hostname: a bare label
@@ -127,6 +128,13 @@ test('a bridge address is never pinned, even when it is the only one found', asy
       assert.equal(published.addresses, undefined);
     }),
   );
+});
+
+test('this server\'s own AirPlay receiver is not offered as a speaker', () => {
+  assert.equal(isOwnAirplayModel(OWN_AIRPLAY_MODEL), true);
+  assert.equal(isOwnAirplayModel(airplayModelFromTxt({ am: OWN_AIRPLAY_MODEL })), true);
+  assert.equal(isOwnAirplayModel(airplayModelFromTxt({ model: 'AppleTV11,1', am: OWN_AIRPLAY_MODEL })), false);
+  assert.equal(isOwnAirplayModel(airplayModelFromTxt({ am: 'AppleTV11,1' })), false);
 });
 
 test('a taken port costs the zone a port, not its receiver', async () => {

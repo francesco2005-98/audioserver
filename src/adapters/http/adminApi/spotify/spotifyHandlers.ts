@@ -193,7 +193,12 @@ async function handleSpotifyAccountLink(
     const hostHeader = typeof req.headers['x-forwarded-host'] === 'string'
       ? req.headers['x-forwarded-host']
       : req.headers.host;
-    const callbackOrigin = spotifyCallbackOrigin(hostHeader, cfg.system?.audioserver?.ip);
+    const forwardedProto = typeof req.headers['x-forwarded-proto'] === 'string'
+      ? req.headers['x-forwarded-proto'].split(',')[0]?.trim()
+      : '';
+    const encrypted = (req.socket as { encrypted?: boolean }).encrypted === true;
+    const protocol = forwardedProto === 'https' || encrypted ? 'https' : 'http';
+    const callbackOrigin = spotifyCallbackOrigin(hostHeader, cfg.system?.audioserver?.ip, protocol);
     const link = buildSpotifyAuthLink({ callbackOrigin }, deps.configPort);
     deps.sendJson(res, 200, { link });
   } catch (err) {
