@@ -1,0 +1,1695 @@
+.setup-layout {
+  width: 100%;
+  max-width: var(--workspace-max);
+  margin: 0 auto;
+}
+
+.setup-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding: 0 8px;
+}
+
+.setup-head__main {
+  min-width: 0;
+}
+
+.setup-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 2.5px;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.setup-eyebrow::before {
+  content: '';
+  width: 24px;
+  height: 8px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 88 32'><g fill='%23F0C14B'><rect x='2' y='12' width='3' height='8' rx='1' opacity='0.4'/><rect x='10' y='7' width='3' height='18' rx='1' opacity='0.6'/><rect x='18' y='10' width='3' height='12' rx='1' opacity='0.8'/><rect x='26' y='5' width='3' height='22' rx='1'/><rect x='38' y='3' width='4' height='26' rx='1'/><rect x='50' y='5' width='3' height='22' rx='1'/><rect x='58' y='9' width='3' height='14' rx='1' opacity='0.9'/><rect x='66' y='6' width='3' height='20' rx='1' opacity='0.8'/><rect x='74' y='11' width='3' height='10' rx='1' opacity='0.7'/><rect x='82' y='13' width='3' height='6' rx='1' opacity='0.6'/></g></svg>");
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.setup-title {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: var(--text);
+  margin: 0 0 3px;
+}
+
+.setup-subtitle {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+  max-width: var(--prose-max);
+}
+
+/* ---- Sub-tabs (Config / Alert engine / Updates) ---- */
+/* ---- Section frame ---- */
+.setup-section {
+  background: color-mix(in srgb, var(--ink) 1.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+/* Config tab: lay the section cards in a responsive two-column grid so the page
+   isn't one long scroll. Cards keep their natural height (align to top). */
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.setup-grid > .setup-section {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.setup-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px 6px;
+}
+
+.setup-section__head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.setup-section__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.8px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-section__eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.setup-section__eyebrow--warn {
+  color: var(--warn);
+}
+
+.setup-section__eyebrow--warn::before {
+  background: var(--warn);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
+}
+
+.setup-section__eyebrow--info::before {
+  background: var(--text-dim);
+  box-shadow: none;
+}
+
+.setup-section__title {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  margin: 0;
+}
+
+.setup-section__desc {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ---- Setting rows inside a section ---- */
+.setup-rows {
+  padding: 4px 18px 14px;
+}
+
+.setup-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px 24px;
+  align-items: center;
+  padding: 14px 4px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-row:first-child {
+  border-top: none;
+}
+
+.setup-row__info {
+  min-width: 0;
+}
+
+.setup-row__label {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.1px;
+}
+
+.setup-row__desc {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.setup-row__control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- Toggle switch ---- */
+.setup-toggle {
+  width: 38px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.setup-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--white);
+  transition: transform 0.25s var(--spring);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shade) 30%, transparent);
+}
+
+.setup-toggle.is-on {
+  background: var(--accent);
+}
+
+.setup-toggle.is-on::after {
+  transform: translateX(16px);
+}
+
+.setup-toggle:hover {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.setup-toggle.is-on:hover {
+  background: var(--accent-bright);
+}
+
+.setup-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Text input + suffix ---- */
+.setup-input {
+  display: inline-flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 140px;
+}
+
+.setup-input:focus-within {
+  border-color: var(--border-accent);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-input input,
+.setup-input textarea {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  padding: 8px 0;
+  width: 100%;
+  outline: none;
+  min-width: 60px;
+  min-height: 0;
+  box-shadow: none;
+}
+
+.setup-input textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.setup-input input::placeholder,
+.setup-input textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.setup-input__suffix {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ---- Buttons (mockup style — overrides global .btn) ---- */
+.setup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-height: 0;
+}
+
+.setup-btn:not(:disabled):hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-btn--warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 25%, transparent);
+  background: color-mix(in srgb, var(--warn) 4%, transparent);
+}
+
+.setup-btn--warn:not(:disabled):hover {
+  color: var(--warn-bright);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+
+.setup-btn--primary {
+  color: var(--accent-on);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.setup-btn--primary:not(:disabled):hover {
+  color: var(--accent-on);
+  border-color: var(--accent-bright);
+  background: var(--accent-bright);
+  transform: translateY(-1px);
+}
+
+.setup-btn--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  background: color-mix(in srgb, var(--danger) 4%, transparent);
+}
+
+.setup-btn--danger:not(:disabled):hover {
+  color: var(--danger-bright);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* ---- Facts strip -------------------------------------------------------
+   Dense read-only key/value band that fills the width of a section instead
+   of stacking label/value rows down one narrow column. Auto-fit means the
+   same markup reads as a 4-up strip on desktop and a 2-up grid on a phone. */
+.setup-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  margin: 0 18px 18px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.setup-facts__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 18px;
+  min-width: 0;
+}
+
+/* Hairline between neighbours. Only ever wrong on the first item of a wrapped
+   row, which the breakpoints below take care of. */
+.setup-facts__item + .setup-facts__item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.setup-facts__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.6px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-facts__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  overflow-wrap: anywhere;
+}
+
+.setup-facts__value--muted {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ---- Live status value (pulsing dot) ---- */
+.setup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.setup-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: setup-pulse 1.8s ease-out infinite;
+}
+
+.setup-status--warn {
+  color: var(--warn);
+}
+
+.setup-status--warn::before {
+  background: var(--warn);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent);
+  animation-name: setup-pulse-warn;
+}
+
+@keyframes setup-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent), 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent, 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent, 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+}
+
+@keyframes setup-pulse-warn {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 70%, transparent), 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent, 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent, 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent);
+  }
+}
+
+/* ---- Connection band (Loxone tab) --------------------------------------
+   Miniserver ⇄ this server, drawn as two nodes joined by a wire. The wire
+   carries a travelling dot while paired and turns into an amber dashed line
+   while waiting, so the pairing state is readable without parsing text. */
+.setup-link {
+  margin: 0 18px 18px;
+  padding: 26px 20px;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(120% 160% at 50% -20%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 62%),
+    color-mix(in srgb, var(--ink) 2%, transparent);
+}
+
+.setup-link--warn {
+  background:
+    radial-gradient(120% 160% at 50% -20%, color-mix(in srgb, var(--warn) 7%, transparent), transparent 62%),
+    color-mix(in srgb, var(--ink) 2%, transparent);
+}
+
+/* Nodes take their natural width so the wire absorbs every remaining pixel and
+   visibly reaches both boxes; the whole composition stays centred in the band. */
+.setup-link__inner {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.setup-link__node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+
+.setup-link__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.setup-link__node--self .setup-link__icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.setup-link__name {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: -0.1px;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-link__meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* The wire runs through the badge at icon height, so the two nodes read as
+   physically connected. 12px = icon half-height minus half the badge. */
+.setup-link__wire {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: start;
+  margin-top: 12px;
+}
+
+.setup-link__line {
+  position: relative;
+  flex: 1;
+  min-width: 24px;
+  height: 2px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.setup-link__line--in {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 50%, transparent) 70%);
+}
+
+.setup-link__line--out {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 50%, transparent) 30%, transparent);
+}
+
+/* Offset the second dot so something is always in flight across the pair. */
+.setup-link__line--out::after {
+  animation-delay: -1.4s;
+}
+
+.setup-link__line::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 90%, transparent);
+  animation: setup-wire 2.8s linear infinite;
+}
+
+.setup-link--warn .setup-link__line {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--warn) 50%, transparent) 0 6px,
+    transparent 6px 13px
+  );
+}
+
+.setup-link--warn .setup-link__line::after {
+  display: none;
+}
+
+@keyframes setup-wire {
+  0% {
+    left: -8px;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% + 2px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-link__line::after,
+  .setup-status::before {
+    animation: none;
+  }
+}
+
+/* ---- Protocol tiles -----------------------------------------------------
+   A flat on/off catalogue (inputs, output types) where every entry is the same
+   shape: icon, name, one line of what it does, a switch. Tiles beat rows here
+   because there are ten of them and the label is the thing you scan for. */
+.setup-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px;
+  padding: 4px 18px 18px;
+}
+
+.setup-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.setup-tile:hover {
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.setup-tile.is-on {
+  border-color: var(--border-accent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.setup-tile--locked {
+  opacity: 0.7;
+}
+
+.setup-tile__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-tile__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--text-dim);
+}
+
+.setup-tile.is-on .setup-tile__icon {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.setup-tile__icon img {
+  width: 17px;
+  height: 17px;
+  opacity: 0.85;
+}
+
+.setup-tile__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text);
+}
+
+.setup-tile__desc {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.setup-tile__foot {
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 5%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.setup-tile__foot--accent {
+  color: var(--accent);
+}
+
+/* ---- Detail panel under a settings row (a server's own settings) ---- */
+.setup-subpanel {
+  margin: 0 18px 18px;
+  padding: 4px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-subpanel > .setup-facts,
+.setup-subpanel > .setup-subform,
+.setup-subpanel > .setup-note {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.setup-facts__value--link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setup-linkcopy {
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  min-height: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.setup-linkcopy:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+/* ---- Compact tile: same language as the protocol tiles, one line of caption
+   instead of a paragraph, for dense sub-grids inside a panel. ---- */
+.setup-tiles--compact {
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 10px;
+  padding: 0 0 14px;
+}
+
+.setup-tile--compact {
+  gap: 6px;
+  padding: 11px 12px;
+}
+
+.setup-tile--compact .setup-tile__icon {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+}
+
+.setup-tile--compact .setup-tile__icon img {
+  width: 15px;
+  height: 15px;
+}
+
+.setup-tile--compact .setup-tile__name {
+  font-size: var(--fs-sm);
+}
+
+.setup-tile__caption {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.setup-tile--compact.is-on .setup-tile__caption {
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+/* Label above a sub-grid inside a panel. */
+.setup-fieldlabel {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+/* ---- Nested form inside a settings row (server credentials) ---- */
+.setup-subform {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 0 18px 18px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+}
+
+.setup-subform__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.setup-subform__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+/* ---- Inline explainer ---- */
+.setup-note {
+  display: flex;
+  gap: 10px;
+  margin: 0 18px 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 5%, transparent);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.setup-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-dim);
+}
+
+.setup-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---- Destructive setting row ---- */
+.setup-row--danger {
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 6%, transparent), transparent 55%);
+  padding-left: 12px;
+  padding-right: 4px;
+  margin-top: 4px;
+}
+
+.setup-row--danger .setup-row__label {
+  color: var(--danger-bright);
+}
+
+/* Section that spans the whole config grid instead of one column. */
+.setup-grid > .setup-section--full {
+  grid-column: 1 / -1;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
+.setup-actions--top {
+  padding-top: 4px;
+}
+
+/* ---- TTS provider picker ---- */
+.setup-tts-providers {
+  display: grid;
+  /* Sized by how many providers there are, not by how many there were. */
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  padding: 4px 18px 14px;
+}
+
+/* One width for every control in this card, so the right edge is a line rather
+   than a ragged staircase of per-field widths. */
+.setup-tts-field {
+  width: 320px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Splits the fields into what you must set, what shapes the voice, and what is
+   optional — a group label, not a heading, so it stays quieter than the rows. */
+.setup-rows__group {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 18px 4px 6px;
+}
+
+/* The label already separates; a border under it as well reads as a double rule. */
+.setup-rows__group + .setup-row {
+  border-top: none;
+}
+
+/* A row whose control is several lines tall: hang the label from the top rather
+   than floating it in the middle of a textarea. */
+.setup-row--tall {
+  align-items: start;
+}
+
+.setup-tts-voicemap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.setup-tts-voicemap__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.setup-tts-voicemap__code {
+  width: 78px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.setup-tts-voicemap__voice {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setup-btn--small {
+  align-self: flex-start;
+  padding: 6px 11px;
+  font-size: var(--fs-2xs);
+}
+
+/* Removes one row; an icon because the label would outweigh the two fields. */
+.setup-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: var(--text-dim);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.setup-iconbtn:hover {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+}
+
+/* The third group is foldable, so it wears the same label as SERVER and VOICE
+   rather than a button of its own kind sitting between the rows. */
+.setup-rows__group--toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  min-height: 0;
+  transition: color 0.15s;
+}
+
+.setup-rows__group--toggle:hover,
+.setup-rows__group--toggle.is-open {
+  color: var(--text-muted);
+}
+
+.setup-rows__group--toggle svg {
+  transition: transform 0.25s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.setup-rows__group--toggle.is-open svg {
+  transform: rotate(90deg);
+}
+
+.setup-adv-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.setup-adv-panel.is-open {
+  grid-template-rows: 1fr;
+}
+
+.setup-adv-panel__inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.setup-adv-panel .setup-row:first-child {
+  border-top: none;
+}
+
+/* The note sits between rows here, not under a section, so it needs less room. */
+.setup-note--tight {
+  margin: 0 4px 14px;
+}
+
+.setup-tts-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+  min-height: 0;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.setup-tts-provider:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.setup-tts-provider.is-selected {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-color: var(--accent);
+}
+
+.setup-tts-provider__name {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.setup-tts-provider.is-selected .setup-tts-provider__name {
+  color: var(--accent-bright);
+}
+
+.setup-tts-provider__desc {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ---- File upload row ---- */
+.setup-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  margin: 4px 18px 12px;
+}
+
+.setup-upload__btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+  min-height: 0;
+  letter-spacing: 0;
+  text-transform: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.setup-upload__btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.setup-upload__btn input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.setup-upload__status {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.setup-upload__hint {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding: 0 18px 18px;
+}
+
+.setup-upload__hint code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+}
+
+/* ---- Alerts grid (built-in MP3 cards) ---- */
+.setup-alerts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 4px 18px 18px;
+}
+
+.setup-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.setup-alert__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setup-alert__name {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.setup-alert__file {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.setup-alert__player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-alert__play {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-on);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.15s;
+  min-height: 0;
+  padding: 0;
+}
+
+.setup-alert__play:not(:disabled):hover {
+  background: var(--accent-bright);
+  transform: scale(1.05);
+}
+
+.setup-alert__play svg {
+  margin-left: 1px;
+}
+
+.setup-alert__progress {
+  flex: 1;
+  height: 3px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: var(--radius-pill);
+  position: relative;
+}
+
+.setup-alert__progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 0.1s linear;
+}
+
+.setup-alert__progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--white);
+  transform: translateY(-50%);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shade) 30%, transparent);
+}
+
+.setup-alert__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--ink) 14%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+.setup-alert__drop:hover {
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+  border-color: var(--border-accent);
+}
+
+.setup-alert__drop input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.setup-alert__drop-main {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.setup-alert__drop-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ---- Updates page ---- */
+.setup-updates-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 18px 18px;
+  flex-wrap: wrap;
+}
+
+.setup-badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 7px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.4px;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-badge--ok {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--border-accent);
+  color: var(--accent-bright);
+}
+
+.setup-badge--ok::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.setup-badge--warn {
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--warn-bright);
+}
+
+.setup-badge--warn::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 50%, transparent);
+}
+
+.setup-updates-last {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.setup-update-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 4px 18px 14px;
+}
+
+.setup-update {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: var(--bg-card);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.setup-update__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-update__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  margin: 0;
+}
+
+.setup-update__desc {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.setup-update__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.setup-update__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+}
+
+.setup-update__row + .setup-update__row {
+  border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.setup-update__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.6px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-update__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.setup-update__value a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.setup-update__foot {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.setup-update__foot a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.setup-update__foot--actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 14px 12px;
+}
+
+.setup-update__hint {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.setup-update__components {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 18px 14px;
+}
+
+.setup-component-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.setup-component-row__name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.1px;
+}
+
+.setup-component-row__versions {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  letter-spacing: -0.1px;
+}
+
+.setup-component-row__versions strong {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Two web-app rows (Admin UI + Player) stacked inside one update tile. */
+.setup-update__weblist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.setup-webapp {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s, background 0.15s;
+}
+.setup-webapp:hover {
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.setup-webapp__icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--text-muted);
+}
+.setup-webapp__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.setup-webapp__name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+.setup-webapp__ver {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  letter-spacing: -0.1px;
+}
+.setup-webapp__ver a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.setup-webapp__ver a:hover {
+  text-decoration: underline;
+}
+.setup-webapp__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.setup-webapp__chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.setup-webapp__chip--ok {
+  color: var(--accent);
+}
+.setup-webapp__chip--ok::before {
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.setup-webapp__chip--muted {
+  color: var(--text-dim);
+}
+/* A newer bundle exists but this core is below what it needs. Amber rather than the
+   accent: it is a state to resolve, not a success — and deliberately not a disabled
+   button, which still reads as an offer. */
+.setup-webapp__chip--blocked {
+  color: var(--warn-bright);
+  cursor: help;
+}
+/* Said under the version line, where the mismatch it describes is visible. */
+.setup-webapp__warning {
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--warn-bright);
+}
+a.setup-webapp__chip--ok:hover {
+  color: var(--accent-bright);
+}
+
+/* ---- Placeholder / state ---- */
+.setup-placeholder {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ink) 1.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: var(--radius-lg);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+  .setup-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .setup-title {
+    font-size: var(--fs-2xl);
+  }
+  .setup-subtabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .setup-subtab {
+    white-space: nowrap;
+  }
+  .setup-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .setup-row__control {
+    justify-self: flex-start;
+  }
+  /* Two-up facts: the hairline belongs between the pair, never at the row start. */
+  .setup-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+  .setup-facts__item:nth-child(odd)::before {
+    display: none;
+  }
+  .setup-facts__item:nth-child(n + 3) {
+    border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+  }
+  /* Stack the two nodes; the wire becomes a short connector between them. */
+  .setup-link {
+    padding: 20px 16px;
+  }
+  .setup-link__inner {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .setup-link__wire {
+    align-self: center;
+    margin-top: 0;
+    padding: 10px 0;
+    width: 80%;
+    justify-self: center;
+  }
+  .setup-tts-providers {
+    grid-template-columns: 1fr;
+  }
+  .setup-alerts-grid {
+    grid-template-columns: 1fr;
+  }
+  .setup-update__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* Warn-toned variant of the inline explainer. */
+.setup-note--warn {
+  border-color: color-mix(in srgb, var(--warn) 22%, transparent);
+  background: color-mix(in srgb, var(--warn) 5%, transparent);
+  color: var(--text);
+}
+
+.setup-note--warn svg {
+  color: var(--warn);
+}
+
+/* A field plus its save button, inline inside a facts cell. */
+.setup-inlineform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

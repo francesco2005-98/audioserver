@@ -1,0 +1,320 @@
+/* ============================================================
+   Welcome — first-run intro. Two steps: a branded "get started"
+   moment, then create the local admin account. Shown on a server
+   that has no admin account yet.
+   ============================================================ */
+
+.welcome-root {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 8px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: opacity 0.7s ease, filter 0.7s ease, transform 0.8s var(--spring);
+}
+
+.welcome-root.is-leaving,
+.welcome-root.is-committing {
+  opacity: 0;
+  filter: blur(12px);
+  transform: scale(0.94);
+  pointer-events: none;
+}
+
+.welcome-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 10px;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.15s;
+}
+
+.welcome-title {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 10px;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.25s;
+}
+
+.welcome-intro {
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+  max-width: 460px;
+  line-height: 1.5;
+  margin: 0 0 30px;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.35s;
+}
+
+@keyframes welcome-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.45s;
+  transition: filter 0.15s, transform 0.15s;
+}
+.welcome-start:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+.welcome-start:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.welcome-start__go {
+  display: inline-flex;
+}
+
+.welcome-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 360px;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.4s;
+}
+.welcome-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.welcome-field__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.welcome-input {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-md);
+  transition: border-color 0.15s;
+}
+.welcome-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.welcome-input:disabled {
+  opacity: 0.6;
+}
+.welcome-error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  text-align: left;
+}
+.welcome-form .welcome-start {
+  margin-top: 4px;
+  justify-content: center;
+  animation: none;
+}
+
+/* Keyed per step so each one animates in with the hero rather than sitting static.
+   Base delays land the first paint after the hero's ~2s intro; once the user
+   interacts, `.is-quick` snaps later step swaps in — they don't wait on the hero. */
+.welcome-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.welcome-step.is-quick .welcome-title {
+  animation-delay: 0.04s;
+}
+.welcome-step.is-quick .welcome-intro {
+  animation-delay: 0.1s;
+}
+.welcome-step.is-quick .welcome-form {
+  animation-delay: 0.16s;
+}
+.welcome-step.is-quick .welcome-start {
+  animation-delay: 0.2s;
+}
+.welcome-step.is-quick .welcome-back {
+  animation-delay: 0.28s;
+}
+.welcome-back {
+  margin-top: 16px;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color 0.15s;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 2.55s;
+}
+.welcome-back:hover:not(:disabled) {
+  color: var(--text);
+}
+.welcome-back:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.welcome-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  width: 100%;
+}
+
+.welcome-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  color: inherit;
+  padding: 28px 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  cursor: pointer;
+  overflow: hidden;
+  font: inherit;
+  transition:
+    border-color 0.2s,
+    transform 0.2s var(--spring),
+    box-shadow 0.25s;
+  animation: welcome-card-in 0.6s var(--spring) both;
+}
+
+.welcome-choice:nth-child(1) { animation-delay: 0.4s; }
+.welcome-choice:nth-child(2) { animation-delay: 0.5s; }
+
+@keyframes welcome-card-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Accent bar that grows on hover (matches the chooser cards). */
+.welcome-choice::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.25s var(--spring);
+}
+
+.welcome-choice:hover:not(:disabled),
+.welcome-choice:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px -20px color-mix(in srgb, var(--accent) 50%, transparent);
+  outline: none;
+}
+
+.welcome-choice:hover:not(:disabled)::before,
+.welcome-choice:focus-visible::before {
+  transform: scaleY(1);
+}
+
+.welcome-choice:disabled {
+  cursor: default;
+}
+
+.welcome-root.is-committing .welcome-choice:not(.is-pending) {
+  opacity: 0.4;
+}
+
+.welcome-choice__go {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  color: var(--text-dim);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s, transform 0.2s var(--spring), color 0.2s;
+}
+
+.welcome-choice:hover:not(:disabled) .welcome-choice__go,
+.welcome-choice.is-pending .welcome-choice__go {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--accent);
+}
+
+.welcome-choice__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.welcome-choice__name {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.welcome-choice__desc {
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.welcome-foot {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin: 26px 0 0;
+  animation: welcome-fade-up 0.6s var(--spring) both;
+  animation-delay: 0.6s;
+}
+
+@media (max-width: 640px) {
+  .welcome-choices {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-eyebrow,
+  .welcome-title,
+  .welcome-intro,
+  .welcome-choice,
+  .welcome-foot {
+    animation: none !important;
+  }
+}

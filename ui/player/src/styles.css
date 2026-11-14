@@ -1,0 +1,1439 @@
+/*
+ * The instruments' stylesheet, and the tokens the whole bundle reads.
+ *
+ * This was the technical player: a second shell with its own bar, rail, browser, queue and
+ * now-playing screen, seven thousand lines of it. That player is gone — its instruments are a *view*
+ * of the one player now (`art/Signal`) — and what is left here is the two things nothing else can
+ * provide:
+ *
+ *  - **The tokens.** `:root` holds the fonts, the surfaces, the accent and the easing that
+ *    `shell.css` and `art.css` both read. They are defined here because this sheet is imported
+ *    first; that is the only reason, and it is a good enough one.
+ *  - **The instruments.** The chain, the clock, the spectrum and the equalizer keep the look they
+ *    were designed with — engraved labels, hairlines, one accent that only ever means a verdict —
+ *    and the deck that hangs them (`art.css`) was built to match rather than to replace it.
+ *
+ * Everything else that used to be here went with the shell it belonged to.
+ */
+
+/*
+ * The faces, self-hosted: Barlow for names and everything you read, Barlow Condensed for the
+ * labels, DM Mono for figures. The lettering engraved on equipment — narrow, technical, exact.
+ *
+ * Static weights, in the two subsets a music catalogue needs (latin and latin-ext), each a file the
+ * browser fetches only when a page uses a glyph from it.
+ *
+ * Self-hosted rather than linked, because an audioserver on a LAN with no route to the internet
+ * must not fall back to a system sans for its own wordmark. `swap` so text is never invisible
+ * while they load.
+ */
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-300-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-300-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-condensed-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/barlow-condensed-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-300-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-300-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/dm-mono-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /*
+   * Three faces, one job each — the same split the admin UI and the art player use, so the
+   * three surfaces read as one product.
+   *
+   *  - `--font-display`: Barlow, light. Titles, the wordmark.
+   *  - `--font-sans`: Barlow again, at a reading weight: running text and names in lists.
+   *  - `--font-label`: Barlow Condensed, spaced capitals. Every *label*.
+   *  - `--font-mono`: DM Mono. Every measurement — a sample rate, a bitrate, a time, a dB. The
+   *    readouts should look like they came off a piece of equipment.
+   */
+  --font-display: 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-sans: 'Barlow', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-label: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /*
+   * The wash. One palette, everywhere, always.
+   *
+   * Named for what it is rather than where it came from: these were `--art-*` and fed by `track.colors`,
+   * and leaving that name on a constant is how a stylesheet starts lying about itself.
+   *
+   * These were overwritten per track from `track.colors`, and with nothing playing they had no value at
+   * all — so the page was flat `--bg` when idle and took the album's temperature when not. Pretty per
+   * record and incoherent across them: a warm sleeve and a cool one made the same screen look like two
+   * products, and changing rooms changed the colour of the furniture.
+   *
+   * A real palette rather than an invented one — read live off a playing zone, which is why it behaves
+   * like artwork does instead of looking like a guess at what artwork looks like. Cool and deep, so the
+   * green accent stays the only thing on the page that is *saying* something.
+   *
+   * Everything that consumes them is now constant: the page wash, the glow under the sleeve, the
+   * analyser's unlit ground. `track.colors` is still in the contract, and the art face is where a
+   * record's own colour belongs.
+   */
+  --wash-primary: rgb(208 217 229);
+  --wash-secondary: rgb(208 217 229);
+  --wash-deep: rgb(33 44 59);
+
+  /*
+   * Surfaces, darkest first. Four steps is enough to seat a card on a rail on a page.
+   *
+   * `--bg` is the *product's* near-black — the same `#0A0C10` the admin console paints its page with
+   * and the same one the brand lockup uses for text on light (`data/export/audioserver-logo-dark-text.svg`).
+   * It was `#08090b`, which is three points away and therefore invisible on its own and wrong beside
+   * the console: two surfaces of one system should not each have their own black.
+   */
+  --bg: #0a0c10;
+  --surface: #0d0f12;
+  --surface-2: #14171c;
+  --surface-3: #1c2027;
+
+  /*
+   * A recess in the surface, for the few things that need to be set apart: the format read-out, the
+   * spectrum, a room in the rail. A *white* tint rather than a dark fill, so it sits with the
+   * artwork wash instead of punching a hole in it — which is what filled, bordered cards did, and
+   * why there are none left.
+   */
+  --well: rgb(255 255 255 / 3%);
+  --well-hover: rgb(255 255 255 / 6%);
+
+  /* Hairlines and washes, as alpha so they compose over artwork. */
+  --line: rgb(255 255 255 / 7%);
+  --line-strong: rgb(255 255 255 / 14%);
+  --tint: rgb(255 255 255 / 4%);
+
+  /*
+   * The text ladder, shared with the console and the art face.
+   *
+   * These were `#e9ebef` / `#a1a8b4` / `#6d7482` — a private ladder two or three points off the one
+   * the admin UI and the art player already share. Nobody can name a two-point difference in a grey
+   * and everybody feels it when the same secondary label is a slightly different colour in the room
+   * next door, so all three surfaces now read from one ladder.
+   */
+  --text: #edeef0;
+  --text-dim: #9ca3af;
+  --text-mute: #6b7280;
+
+  /*
+   * One accent, and it is the *product's* — the same gold the admin UI uses (`#F0C14B`), not a
+   * near-miss of it. Two shades of gold across two surfaces of one system is the kind of thing
+   * nobody can name and everybody feels.
+   */
+  --accent: #f0c14b;
+  /* The verdict's own gold, for a surface that sets its ink to silver. */
+  --ok: #f0c14b;
+  --accent-soft: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 30%, transparent);
+  /* The ink *on* the accent — the console's `--accent-on`. */
+  --accent-ink: #1C1404;
+
+  --warn: #f59e0b;
+  --warn-soft: rgb(245 158 11 / 14%);
+
+  /*
+   * One radius scale, shared with the console: 8 / 10 / 12 / 16.
+   *
+   * `--r-sm` was 6px and `--r-lg` 14px, which put every small button in this player two pixels
+   * tighter than the same button in the admin UI — the kind of mismatch that reads as "different
+   * product" without ever being noticed as a number.
+   */
+  --r-sm: 8px;
+  --r: 10px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 45%);
+  --shadow-3: 0 18px 50px rgb(0 0 0 / 55%);
+
+  --gap: 12px;
+  --dur: 140ms;
+  /*
+   * One curve, everywhere in the product.
+   *
+   * This was `cubic-bezier(0.2, 0.7, 0.3, 1)`, which made the technical player the only one of the
+   * four surfaces (console, shell, art face, both design prototypes) that did not ease on
+   * `(0.2, 0.8, 0.2, 1)`. Motion is the most legible signature a system has and it should have one.
+   */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Kept for anything still reaching for the old name. */
+  --radius: var(--r);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 var(--font-sans);
+  /* Numbers never change width, anywhere. Durations, volumes and bitrates all live next to a
+     slider or in a column, and proportional digits make both jitter. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * The two voices, as helpers.
+ *
+ * `.mono` is a *label*: uppercase, wide, small, and never a sentence — the tracking that makes a
+ * three-letter label read as engraved makes a paragraph unreadable. `.disp` is the display face
+ * with the tracking it wants; both are applied by name in the rules below rather than by wrapping
+ * markup in extra spans.
+ */
+.mono {
+  font-family: var(--font-label);
+  /* A condensed face is small for its size: set by its x-height, so a 10px label reads as one. */
+  font-size-adjust: 0.6;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.disp {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/*
+ * The reset every bare button was missing.
+ *
+ * This set `font`, `colour` and `cursor` and left the rest to the user agent — so any `<button>` whose
+ * class did not happen to state a background and a border rendered as a *native* one: a grey fill and a
+ * 2px light border, which is how the rail's fold control turned up as an ugly box twice. Measured on it
+ * before this: `background: rgb(107 107 107)`, `border: 2px rgb(255 255 255)`, from nowhere in this
+ * stylesheet.
+ *
+ * Every styled control here states its own fill and border, so removing the UA's costs them nothing and
+ * means the next bare button inherits this face's look instead of the browser's.
+ */
+button {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+p {
+  margin: 0;
+}
+
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * Icons are sized here, once, for every context.
+ *
+ * An `<svg>` with only a `viewBox` takes its size from its container, so in a flex row it
+ * stretches to whatever room is going — which is how a 16px glyph became four white squares
+ * filling a button. One rule at the top makes that impossible everywhere rather than needing a
+ * width beside every icon.
+ */
+svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* Thin, quiet scrollbars: three panes scroll independently and three grey slabs would frame the
+   content in chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 22%);
+  background-clip: content-box;
+}
+
+.text-button {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  transition:
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.text-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.text-button[data-active] {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/*
+ * A chip states a fact — a codec, a verdict, a kind. Never interactive.
+ *
+ * A quiet fill, no edge. It was a hairline box, argued from "a fill reads as something to press" —
+ * which held when fills were rare here, and stopped holding when five of them sat in a row under
+ * the title: five drawn rectangles is a toolbar whatever is inside them. A 5% tint with no border
+ * reads as what this actually is — a token, engraved — and the one chip that *is* saying something
+ * (`data-lossless`) keeps its ring and its lamp, which now stand out instead of matching.
+ */
+/*
+ * A chip is a label, not a plate.
+ *
+ * These were filled rounded boxes, four or five of them in a row under a title — which is the look the
+ * whole player has just spent a pass getting rid of. Engraved uppercase at 9.5px is already a chip:
+ * the type says "this is a small fact about the audio" without a box drawn around it, and a row of
+ * them reads as a line rather than as a form.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 0;
+  color: var(--text-mute);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/*
+ * The one chip that earns colour: the audio survived intact.
+ *
+ * And the one that earns light — the faintest halo, steady, never pulsing. It is the LOCK lamp on
+ * the front of the equipment: on when the signal is exactly what the source sent, and the fact
+ * that it neither blinks nor breathes is what makes it read as a state rather than an event.
+ */
+/* Lossless is the one chip with an opinion, so it keeps the accent — as ink, not as a lozenge. */
+.chip[data-lossless] {
+  color: var(--accent);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.badge svg {
+  width: 11px;
+  height: 11px;
+}
+
+.badge.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.notice {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.notice.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.count {
+  margin-left: 6px;
+  color: var(--text-mute);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/*
+ * Section labels: the quietest text on the page, and the most repeated.
+ *
+ * All of them in the mono face — this is the one decision that makes the player read as
+ * equipment rather than as a website. A label is engraved on a panel; it is not prose.
+ */
+.analysis-heading > span:first-child {
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/*
+ * Every measurement, in the mono face.
+ *
+ * Rates, depths, bitrates, times, volumes, dB and the verdict chips. `tabular-nums` on the body
+ * already stops digits from changing width; the mono face is what stops a *reading* from looking
+ * like a sentence. Collected in one rule so a new readout gets the voice by naming its class here
+ * rather than by remembering to add three properties.
+ */
+.chip,
+.badge,
+.analysis-axis span,
+.eq-handle-label,
+.eq-handle-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The only native control left, and it showed.
+ *
+ * It was already bordered and filled, but without `appearance: none` it kept the platform's own
+ * indicator and metrics — a double chevron and a taller box, sitting beside two text buttons. On a page
+ * where every other control was drawn by hand it read as a form that had wandered in. The arrow is ours
+ * now (a chevron in the same weight as the rail's), and the padding leaves room for it.
+ */
+select {
+  appearance: none;
+  padding: 5px 26px 5px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background:
+    /* A chevron, drawn as two strokes rather than shipped as an asset. */
+    linear-gradient(45deg, transparent 50%, var(--text-mute) 50%) calc(100% - 13px) calc(50% - 1px) /
+      5px 5px no-repeat,
+    linear-gradient(-45deg, transparent 50%, var(--text-mute) 50%) calc(100% - 9px) calc(50% - 1px) /
+      5px 5px no-repeat,
+    /* The recess, not a border — the same surface language the chips and the star moved to. */
+    var(--well-hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+select:hover {
+  background:
+    linear-gradient(45deg, transparent 50%, var(--text-dim) 50%) calc(100% - 13px) calc(50% - 1px) /
+      5px 5px no-repeat,
+    linear-gradient(-45deg, transparent 50%, var(--text-dim) 50%) calc(100% - 9px) calc(50% - 1px) /
+      5px 5px no-repeat,
+    rgb(255 255 255 / 9%);
+}
+
+input[type='search'],
+input[type='text'] {
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+input[type='search']::placeholder {
+  color: var(--text-mute);
+}
+
+/*
+ * Sliders, drawn thin.
+ *
+ * The native control was kept for a long time on the argument that hand-drawing one loses the *filled*
+ * portion in Firefox — which is true of `::-moz-range-progress` tricks, and avoidable: the fill here is
+ * a gradient on the track whose stop sits at `--fill`, a percentage the component sets inline. Both
+ * engines honour that, so this is a custom slider with none of the usual costs, and the input itself
+ * still owns the gesture, the keyboard and the accessible name.
+ *
+ * Why bother: a native range renders a ~4px track and a ~16px thumb, and five of those in a rail read as
+ * plumbing. The design's are a 2px line with a small round knob — furniture you look past until you need
+ * it. The element stays 18px tall for the hit area; only the paint is thin.
+ *
+ * The equalizer's are excluded (`.native-range`): they are vertical, and a vertical range is one of the
+ * few places where the platform's own control is still the only one that works everywhere.
+ */
+input[type='range']:not(.native-range) {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1;
+  min-width: 70px;
+  height: 18px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+}
+
+input[type='range']:not(.native-range)::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(
+    to right,
+    /* A fader's fill is a position, and a position is silver here — the accent is kept for the
+       things this face has a verdict about. */
+    rgb(255 255 255 / 48%) 0 var(--fill, 0%),
+    var(--line-strong) var(--fill, 0%) 100%
+  );
+}
+
+input[type='range']:not(.native-range)::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  /* Half the thumb minus half the track: what centres a 11px circle on a 2px line. */
+  margin-top: -4.5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  /* The ring punches the knob out of the line it sits on; the glow is what makes it look lit rather
+     than stuck on. */
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: scale var(--dur) var(--ease);
+}
+
+input[type='range']:not(.native-range)::-moz-range-track {
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(
+    to right,
+    /* A fader's fill is a position, and a position is silver here — the accent is kept for the
+       things this face has a verdict about. */
+    rgb(255 255 255 / 48%) 0 var(--fill, 0%),
+    var(--line-strong) var(--fill, 0%) 100%
+  );
+}
+
+input[type='range']:not(.native-range)::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Reached for, so it grows a little. */
+input[type='range']:not(.native-range):hover::-webkit-slider-thumb,
+input[type='range']:not(.native-range):focus-visible::-webkit-slider-thumb {
+  scale: 1.18;
+}
+
+/* --- analysis ------------------------------------------------------------- */
+
+/*
+ * Not a card.
+ *
+ * This was the last filled box in the main column, which put it at odds with the rule the rest of the
+ * page follows: once the rails lost their fill, one wash runs across the whole window and a tinted
+ * slab sitting on it reads as a panel that failed to fill. The analyser does not need a card anyway —
+ * its unlit segments *are* its ground, and they read better against the page than against a lighter
+ * grey. A hairline above and below sets it apart as an instrument without boxing it in.
+ */
+/* A column, so the heading sits on top and the display below it takes the rest of the height the
+   layout hands the panel. */
+.analysis-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Nothing inside a panel gets to paint outside it. The row below this one is the tab strip. */
+  overflow: hidden;
+  padding: 4px 0 9px;
+  border: 0;
+  /* No rules at all: the chain above this *is* the header, and the frequency scale is the foot. A
+     hairline between a header and the thing it heads is a seam in one object. */
+  border-top: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.analysis-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* The display's own geometry, in the label voice, between its name and the equalizer's door. */
+.analysis-geometry {
+  flex: 1;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: none;
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analysis-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/*
+ * The spectrum, as a segmented LED display.
+ *
+ * Each `<i>` is a **full-height column**, not a bar: the lit part is drawn inside it from the bottom
+ * and the held peak floats above that. Sizing the element itself would leave nothing for the cap to
+ * position against, and nothing to draw the *unlit* segments on.
+ *
+ * The segments themselves are one repeating gradient used twice — as the column's own faint
+ * background, and as a mask over the lit fill. Because both boxes share their bottom edge, the two
+ * patterns line up automatically at every height, with no arithmetic and nothing to keep in sync.
+ *
+ * `--spec-h` divides exactly by the segment period (100 / 10 = 10 segments). Keep it that way when
+ * changing either, or the top segment is clipped mid-block and the whole thing looks misprinted.
+ */
+/*
+ * Height scales with the window, because the layout had spare room and was spending it on nothing.
+ *
+ * The queue sits under this and is usually short — one track, sometimes none — so a fixed 120 px
+ * display left a third of a large screen empty below it. The analyser is the most alive thing on the
+ * page and the one element that gets *better* with height (more segments resolve, the noise floor
+ * separates from the music), so it takes the slack. Clamped at both ends: below 120 px the segments
+ * stop reading as a column, and past ~260 px it starts to dominate a page whose subject is a song.
+ */
+/*
+ * As tall as the panel gives it, with a floor.
+ *
+ * It was `clamp(120px, 20vh, 236px)` — a band, because the layout above had nothing to give it. Now
+ * the row it sits in is the elastic one, so the display can be what a display is: the largest surface
+ * on the panel. The floor is what keeps it a reading rather than a stripe on a short window; the
+ * `ResizeObserver` in `AnalysisPanel` means the bars re-fit whenever that number changes.
+ */
+.spectrum {
+  --spec-h: clamp(120px, 20vh, 236px);
+
+  position: relative;
+  /*
+   * A *preferred* height, not a floor.
+   *
+   * `min-height: var(--spec-h)` was the wrong half of the idea: on a window with less height than the
+   * panel wanted, the display refused to shrink, the panel's contents outgrew the grid row it lives in,
+   * and the frequency axis and the meter bridge painted straight through the tabs underneath. A reading
+   * that overlaps the furniture is worse than a short one.
+   *
+   * As a flex *basis* it says the same thing where there is room — take 236 and grow into whatever the
+   * row has spare — and gives way when there is not. `min-height: 0` is what allows that: a flex item's
+   * automatic minimum is its content, which is exactly the floor being removed here.
+   */
+  flex: 1 1 var(--spec-h);
+  /*
+   * A floor, because a display that can reach zero does.
+   *
+   * `min-height: 0` was right for the bug it fixed — the panel outgrowing its row and painting the axis
+   * through the tab strip — and wrong as a resting state: with a tall chain under it the spectrum was
+   * handed what was left, and what was left was nothing. 120px is the smallest thing that still reads
+   * as a spectrum. `overflow: hidden` on the panel is what makes this safe now; if the window is too
+   * short for even that, the panel clips itself instead of painting on its neighbours.
+   */
+  min-height: 120px;
+  /*
+   * A window, not loose bars on a page.
+   *
+   * The field had no edge, so its rules ran into the panel's own background and the reading looked
+   * like ink that had been spilled where the display should be. One hairline and a ground a shade
+   * above the page turn it into an instrument's window — which is also what lets the rules stop at
+   * an edge instead of trailing off.
+   */
+}
+
+@keyframes np-lane-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes np-hand-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+
+@keyframes signal-flow-x {
+  from {
+    background-position: -90px 0;
+  }
+
+  to {
+    background-position: calc(100% + 90px) 0;
+  }
+}
+
+/*
+ * The scale across the display.
+ *
+ * A hairline at 4% and a two-digit number at 8.5px: present when you look for it, invisible when you
+ * are watching the music. The number sits *above* its line rather than beside it, because a label on
+ * the line is a label with a bar running through it half the time.
+ *
+ * `--line` rather than a colour of its own: the rules belong to the same family as every other hairline
+ * on this face, and a scale that is more visible than the reading is a scale nobody asked for.
+ */
+/* The axis the two channels are folded on: the one line in the display that is not a reading. */
+.spectrum-axis-line {
+  stroke: rgb(255 255 255 / 14%);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.spectrum-rules line {
+  stroke: rgb(255 255 255 / 6.5%);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+/*
+ * `L` and `R`, engraved at the fold.
+ *
+ * The bridge that used to carry them is gone: the halves *are* the channels, so what is left to say is
+ * which half is which, once, where they meet.
+ */
+.spectrum-side {
+  position: absolute;
+  left: 0;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgb(255 255 255 / 30%);
+  pointer-events: none;
+}
+
+.spectrum-side[data-side='l'] {
+  top: calc(50% - 13px);
+}
+
+.spectrum-side[data-side='r'] {
+  top: calc(50% + 3px);
+}
+
+.spectrum-rules text {
+  font-family: var(--font-mono);
+  /* 9.5px at 38%, was 8.5 at 30. The display is twice the size it was when these numbers were
+     chosen, and a scale nobody can read is ink pretending to be information. */
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  fill: rgb(255 255 255 / 38%);
+}
+
+/*
+ * The display stands on black glass.
+ *
+ * A reflection under the LEDs — mirrored, fading fast — is what a real analyser does on a lacquer
+ * console, and it is the difference between a chart drawn on a page and an instrument sitting in
+ * a room. Chromium and WebKit only; Firefox simply has no reflection, which is why the reserved
+ * margin lives in the same `@supports` and the layout never differs between the two. Withheld
+ * while the equalizer is overlaid — a mirrored copy of the handles would read as sixteen of them.
+ */
+@supports (-webkit-box-reflect: below) {
+  .spectrum {
+    -webkit-box-reflect: below 10px linear-gradient(transparent 74%, rgb(0 0 0 / 25%));
+    margin-bottom: 34px;
+  }
+
+  .spectrum[data-eq] {
+    -webkit-box-reflect: none;
+  }
+}
+
+/*
+ * The probe: a hairline where the pointer is, and the two numbers of that spot.
+ *
+ * Same instrument-gesture as the timeline's hover cursor — an answer before you commit to
+ * anything, except here there is nothing to commit to: the display simply lets itself be measured.
+ */
+.spectrum-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 1px;
+  background: rgb(255 255 255 / 25%);
+  pointer-events: none;
+}
+
+.spectrum-readout {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgb(10 12 16 / 92%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--text);
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+/* The level, one step quieter than the frequency: the axis you asked about leads. */
+.spectrum-readout i {
+  font-style: normal;
+  color: var(--text-dim);
+}
+
+/*
+ * The scale, behind the bars.
+ *
+ * Four hairlines across the display, drawn once as a single gradient on the container rather than
+ * as elements — a reading is easier to judge against a graticule than against nothing, and this is
+ * what a hardware analyser has behind its LEDs. It sits under the columns because `::before`
+ * paints before element children, so no z-index is needed and the bars are never veiled by it.
+ *
+ * Deliberately unlabelled: the panel already carries a level readout, and dB ticks up the side of
+ * a 120px display would be four more numbers for something nobody reads off a spectrum.
+ */
+.spectrum::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0 calc(25% - 1px),
+    var(--line) calc(25% - 1px) 25%
+  );
+  /* Faded upward like the grid behind it: four full-width rules climbing to the top edge would put
+     back the rectangle the segments just stopped drawing. A mask is safe here — this pseudo has no
+     children to take with it. */
+  -webkit-mask: linear-gradient(to top, #000 0%, #000 30%, transparent 88%);
+  mask: linear-gradient(to top, #000 0%, #000 30%, transparent 88%);
+  opacity: 0.4;
+}
+
+/*
+ * The reading, as modern bars.
+ *
+ * This display went LED wall → continuous curve → here. The wall was a 1992 rack component at any
+ * size; the curve was beautiful and read as a software plugin — and this is the *technical* face
+ * of a piece of equipment. Slim rounded columns with real air between them keep the instrument
+ * identity and none of the retro: the black between the bars is inside the reading, and the caps
+ * above them are the memory. Everything animated is driven per-frame by the ballistics in
+ * `useAnalysis`, so nothing here transitions: CSS smoothing on top of ballistics is smoothing
+ * applied twice.
+ */
+.spectrum-curve {
+  position: absolute;
+  inset: 0;
+  /* Explicit, because the global `svg` icon sizing (16×16, line ~259) beats width/height
+     *attributes* — the entire spectrum spent one build as a green dash in the corner. */
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Hidden, deliberately: the bars run past the floor by their corner radius so their feet are
+     clipped flat (see AnalysisPanel) — rounded tops, grounded bottoms. */
+  overflow: hidden;
+}
+
+/* A silver field needs no halo — the glow returns to the one place that earns it: the caps. */
+.spectrum-bars {
+  filter: none;
+}
+
+/* Silence settles into a row of resting caps on the floor — a device that is on, saying nothing. */
+.spectrum[data-settling] .spectrum-bars {
+  opacity: 0.45;
+  filter: none;
+  transition: opacity 900ms ease-out;
+}
+
+/* --- frequency axis ------------------------------------------------------- */
+
+/*
+ * Ticks positioned by frequency across the width, so each label sits over the bins it names.
+ * `--pull` is set per tick by the component: -50% to centre, and 0 / -100% at the ends where
+ * centring would hang half the label off the panel.
+ */
+/*
+ * The frequency scale: labels under the field, and nothing else.
+ *
+ * It spent a version inside a bordered strip attached to a bordered display, which is two frames
+ * around three numbers. The field's own rules give the reading its shape; these say where it is on
+ * the axis. `flex: none` because a scale squeezed to 5px keeps its ground and loses its numbers.
+ */
+.analysis-axis {
+  position: relative;
+  flex: none;
+  height: 16px;
+  padding-top: 4px;
+}
+
+.analysis-axis span {
+  position: absolute;
+  top: 0;
+  color: var(--text-mute);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  translate: var(--pull, -50%) 0;
+  white-space: nowrap;
+}
+
+/*
+ * No tick marks. A mark would have to be drawn from inside the label, whose own left edge moves when
+ * `--pull` shifts it inward at the ends — so it would point at the label's centre rather than at the
+ * frequency. The label alone is unambiguous; a mark that is subtly wrong is not worth the extra
+ * element it would take to place correctly.
+ */
+
+/* --- equalizer overlay --------------------------------------------------- */
+
+/*
+ * The equalizer, laid over the spectrum.
+ *
+ * Absolute inside `.spectrum`, so every `left` below is a percentage of the *display* and lands on the
+ * frequency the component computed — no measurement, nothing to keep in sync when the panel resizes.
+ */
+.eq-overlay {
+  --eq-top: 20px;
+
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+/*
+ * The strip the overlay keeps for itself, so its own controls never sit on a slider.
+ * `--eq-top` is the one number the toolbar, the handles and the curve all measure from — they have to
+ * agree, or the curve stops passing through the thumbs.
+ */
+.eq-toolbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--eq-top);
+  z-index: 4;
+}
+
+/* Dims the bars while the handles are up, so the control reads as the foreground. */
+.spectrum[data-eq] i::before {
+  opacity: 0.4;
+}
+
+.spectrum[data-eq] i::after {
+  opacity: 0.25;
+}
+
+/*
+ * The response curve through the ten gains.
+ *
+ * A 100x100 viewBox with `preserveAspectRatio: none` stretches to the panel, which is what lets the
+ * points be written as percentages. `vector-effect` keeps the stroke 1.5px after that stretch —
+ * without it a wide panel scales the line into a smear.
+ */
+.eq-curve {
+  position: absolute;
+  inset: var(--eq-top) 0 0;
+  width: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.eq-curve polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
+}
+
+/* One band. Positioned at its frequency; `--pull` centres it, or aligns it inward at the edges. */
+.eq-handle {
+  position: absolute;
+  top: var(--eq-top);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 34px;
+  translate: var(--pull, -50%) 0;
+}
+
+/*
+ * The slider spans the full height, so its thumb sits at the gain the curve draws.
+ *
+ * `writing-mode: vertical-lr` is the modern way and Chrome honours it; `appearance: slider-vertical`
+ * is the fallback older engines still need and is harmless where the first already worked. Native, so
+ * the equalizer stays reachable by keyboard.
+ */
+.eq-handle input[type='range'] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  opacity: 0.7;
+}
+
+.eq-handle input[type='range']:hover,
+.eq-handle input[type='range']:focus-visible {
+  opacity: 1;
+}
+
+.eq-handle-label {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  color: var(--text-mute);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* A band that is set says so in text as well as in the curve — the curve is readable at a glance but
+   not to the dB. */
+.eq-handle[data-set] .eq-handle-label {
+  color: var(--text-dim);
+}
+
+.eq-handle-value {
+  position: absolute;
+  top: -14px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Marks the band whose centre is below the analyser's floor, so its position on this scale is a
+   placement rather than a reading. */
+.eq-handle-note {
+  color: var(--line-strong);
+  cursor: help;
+}
+
+.eq-flat {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/*
+ * No box until it is on.
+ *
+ * It is a toggle, so a border is right — while the toggle is *active*. Drawn permanently it was the only
+ * outlined control in a heading whose other content is a readout, and it made "adjust the equalizer"
+ * look like the subject of the panel rather than something you can do to it. Off: a label with a hover
+ * target. On: `.text-button[data-active]` supplies the accent border it earns.
+ */
+.analysis-eq-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-color: transparent;
+  font-size: 11px;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.analysis-eq-toggle:hover:not([data-active]) {
+  background: var(--well);
+  border-color: transparent;
+}
+
+.analysis-eq-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+@keyframes signal-flow {
+  from {
+    background-position: 0 -64px;
+  }
+
+  to {
+    background-position: 0 calc(100% + 64px);
+  }
+}
+
+@keyframes signal-relock {
+  from {
+    color: var(--accent);
+  }
+}
+
+/* --- signal path: the clock ----------------------------------------------- */
+
+/*
+ * The timing block, under the chain.
+ *
+ * Separated by a hairline the same way the verdict is, because it answers a different question from
+ * the stages above it: those say what happened to the audio, this says whether it arrives on time.
+ * The only control in the whole rail lives here, and it is at the bottom on purpose — a correction
+ * you reach for occasionally should not sit above the readings that tell you whether you need it.
+ */
+.signal-timing {
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * The lead's roll display — see `LeadTrace`. The band is the promise, the line is the delivery,
+ * and a healthy stream is the one chart nobody has to learn to read: flat line, inside the glow.
+ */
+/*
+ * The lead, over the last few seconds.
+ *
+ * It read as a bright green line floating over the stations — debris, not a reading. The cause is the
+ * geometry being right: a healthy lead sits at the *top* of its own band, so the line is drawn near
+ * the top edge of an invisible box, and a line with nothing around it is a scratch on the panel.
+ * Drawing the band it is measured against gives it a shape, and once there is a shape the line can be
+ * quiet.
+ */
+/*
+ * The lead over the last few seconds, drawn for the column it now lives in.
+ *
+ * It was sized for a 150px slot inside the chain; in the rail it stretched to 350px and read as a
+ * green bar parked under the clock. Shorter, and the band it is measured against goes back to being a
+ * ground rather than a colour — the line is the only thing here that should be accent, and it is one
+ * pixel of it.
+ */
+.signal-trace {
+  margin-top: 12px;
+}
+
+.signal-trace-head {
+  margin: 0 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--text-mute);
+  text-transform: uppercase;
+}
+
+.signal-trace svg {
+  display: block;
+  /* Stated here rather than on the box: the chart is `preserveAspectRatio: none` on a 100x100 viewBox,
+     so `height: 100%` of an auto-height parent resolves to its intrinsic square — 300px of green in a
+     220px rail. */
+  width: 100%;
+  height: 22px;
+}
+
+/* The band it is supposed to stay inside: a ground, not a colour. */
+.signal-trace-band {
+  fill: rgb(255 255 255 / 5%);
+}
+
+.signal-trace-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.6;
+}
+
+.signal-timing-head {
+  margin: 0 0 9px;
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* The device's own verdict. Toned like the stage dots: green is not "good", it is "locked". */
+.signal-lock {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0 0 10px;
+}
+
+.signal-lock-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.signal-lock[data-tone='ok'] .signal-lock-label {
+  color: var(--accent);
+}
+
+.signal-lock[data-tone='warn'] .signal-lock-label {
+  color: var(--warn);
+}
+
+.signal-lock[data-tone='bad'] .signal-lock-label {
+  color: var(--bad, var(--warn));
+}
+
+.signal-lock-note {
+  min-width: 0;
+  color: var(--text-mute);
+  font-size: 11px;
+}
+
+/*
+ * Three readings in a row, mono and tabular so they stop twitching sideways as they change.
+ * `auto-fit` rather than three fixed columns: drift is absent for a stream that has not
+ * established one, and a gap where a column was reads as a missing value.
+ */
+.signal-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px 10px;
+  margin: 0 0 12px;
+}
+
+.signal-metrics dt {
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.signal-metrics dd {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.signal-metric-unit {
+  color: var(--text-mute);
+  font-size: 10px;
+}
+
+/* "of 250", "peak 99": the number beside is what makes the number in front mean anything. */
+.signal-metric-of {
+  display: block;
+  color: var(--text-mute);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+/* --- focus --------------------------------------------------------------- */
+
+/*
+ * One ring for everything, defined once and last so it wins.
+ *
+ * `:focus-visible` rather than `:focus`: a mouse click on a transport button should not leave a
+ * ring behind, but tabbing to it must show one.
+ */
+/*
+ * The ring is the console's ring: a half-strength outline with a wide, faint halo behind it, rather
+ * than a hard 2px of full accent. Two products cannot each have their own idea of what focus looks
+ * like — it is the one piece of styling a keyboard user sees on every surface, in sequence.
+ *
+ * It sets no `border-radius`, deliberately, and used to. That declaration does not round the *ring* —
+ * it rounds the focused element, and the ring merely follows. On the queue's move-to control, which is
+ * a select and a button welded into one field, focusing the select rounded its square inner edge and
+ * pushed a uniform green box out past the shared border: two controls that had come apart. An outline
+ * already traces whatever radius the element has, so saying nothing here is what keeps every ring the
+ * shape of the thing inside it.
+ */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* --- reduced motion ------------------------------------------------------- */
+
+/*
+ * The meter keeps its transition: it is a *readout* of live audio, and without the tween it
+ * strobes at the frame rate, which is worse for the sensitivity this setting asks about than the
+ * smooth motion is. (The spectrum needs no exception any more — its curve is driven per frame by
+ * the ballistics loop and carries no CSS transition to slow down.)
+ */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.analysis-meter span) {
+    transition-duration: 1ms !important;
+  }
+}
+

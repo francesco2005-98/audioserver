@@ -1,0 +1,193 @@
+.toast-stack {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: var(--z-alert, 7000);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: calc(100vw - 48px);
+  width: 380px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--shade) 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ink) 2%, transparent);
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  animation: toast-in 0.35s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.toast.is-leaving {
+  animation: toast-out 0.25s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+.toast::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--text-muted);
+}
+
+.toast--success::before {
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.toast--warn::before {
+  background: var(--warn);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--warn) 50%, transparent);
+}
+
+.toast--error::before {
+  background: var(--danger);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+.toast--info::before {
+  background: var(--info);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--info) 50%, transparent);
+}
+
+.toast__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.toast--success .toast__icon {
+  color: var(--accent-bright);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.toast--warn .toast__icon {
+  color: var(--warn-bright);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.toast--error .toast__icon {
+  color: var(--danger-bright);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.toast--info .toast__icon {
+  color: var(--info-bright);
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+}
+
+.toast__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast__title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.1px;
+  margin-bottom: 2px;
+}
+
+.toast__message {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+  word-break: break-word;
+  /* Messages that explain a fix write it on its own lines, indented. Collapsing that into one
+     paragraph — the HTML default — turned the fix into a run-on sentence. */
+  white-space: pre-wrap;
+  /* A long explanation still may not own the screen; it scrolls inside the toast instead. */
+  max-height: 45vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.toast__action {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.4px;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.toast__action:hover {
+  color: var(--accent-bright);
+}
+
+.toast__close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.toast__close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+  .toast.is-leaving {
+    animation: none;
+  }
+}

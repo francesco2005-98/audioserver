@@ -1,0 +1,348 @@
+/* ============================================================
+   Access — the showcase of ways this server's content is served.
+   One card per interface: what it is, whether it's serving, and
+   its own settings. Cards in a row share a height and align their
+   footers, so the grid stays tidy however many interfaces exist.
+   ============================================================ */
+
+.access-count {
+  align-self: center;
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.access-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  overflow: hidden;
+  transition: border-color 0.18s ease;
+}
+
+/* A faint top edge that lights up once the interface is serving. */
+.access-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.access-card.is-on::before {
+  opacity: 0.7;
+}
+.access-card.is-on {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border-soft));
+}
+
+.access-card__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+
+.access-card__icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.access-card__icon img,
+.access-card__icon svg {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+.access-card.is-on .access-card__icon {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--accent-soft);
+}
+
+.access-card__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 650;
+  line-height: 1.3;
+}
+.access-card__head .setup-toggle,
+.access-card__head .setup-badge {
+  flex: none;
+}
+
+.access-card__desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Where to switch a service that has no toggle here. */
+.access-card__hint {
+  display: flex;
+  gap: 7px;
+  margin: 11px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* The one state a toggle can't express (listening, not yet paired). */
+.access-pending {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+.access-pending__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: access-pending-pulse 1.25s ease-in-out infinite;
+}
+@keyframes access-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .access-pending__dot { animation: none; }
+}
+
+/* Settings for this interface, pinned to the bottom so footers line up. */
+.access-card__extras {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+/* ---- Copyable address: one row, truncating rather than wrapping ---- */
+.access-url {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+.access-url__text {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.access-url__copy {
+  flex: none;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.access-url__copy:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.access-url__copy.is-done {
+  color: var(--accent);
+}
+
+/* MQTT. The card shows only a summary and a button: four labelled fields made it
+   twice the height of every other card and broke the grid, so the settings live in a
+   dialog. */
+.access-mqtt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Whether the broker connection is actually up. Stated plainly because a wrong
+   address or password saves successfully and then simply never connects. */
+.access-mqtt__state {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.access-mqtt__state.is-ok {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.access-mqtt__state.is-bad {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.access-mqtt__configure {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.access-mqtt__configure:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.access-mqtt__configure:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The dialog form. Stacked labels rather than SetupView's `setup-row`, which puts
+   label and control side by side and needs more width than this dialog has. */
+.access-mqtt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.access-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.access-field__label {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--text);
+}
+.access-field__hint {
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.access-field__input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.access-field__input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+/* Host + port and username + password each belong on one line, but must wrap rather
+   than overflow on a narrow screen. */
+.access-field__pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.access-field__pair .access-field__input {
+  flex: 1 1 140px;
+}
+.access-field__input--port {
+  flex: 0 0 96px;
+}
+
+/* A setting with its own toggle, which writes immediately instead of waiting for Save. */
+.access-mqtt__option {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.access-mqtt__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* Where to find the topics, once it is publishing. */
+.access-mqtt__where {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* This dialog holds a short form, not a wizard, so it should not stretch as wide as
+   the bridge setup flow it borrows its shell from. */
+.bridge-modal.bridge-modal--narrow {
+  max-width: 520px;
+}
+
+/* Who can control this, stated where the broker is configured. Not a warning banner:
+   it is how MQTT normally works, and the reader is choosing a broker, not being scolded. */
+.access-mqtt__note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}

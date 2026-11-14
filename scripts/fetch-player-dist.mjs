@@ -1,16 +1,25 @@
-import { promises as fs } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
+import { cp, mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 
-// The web player is not downloaded from another project. The local coming-soon
-// page is what the server serves until a player is placed in public/player.
-const comingSoonHtml = join(dirname(fileURLToPath(import.meta.url)), 'player-coming-soon.html');
-const targetDir = join(process.cwd(), 'public', 'player');
-const indexPath = join(targetDir, 'index.html');
-await fs.mkdir(targetDir, { recursive: true });
-try {
-  await fs.access(indexPath);
-} catch {
-  const page = await fs.readFile(comingSoonHtml);
-  await fs.writeFile(indexPath, page);
+const root = process.cwd();
+const sourceDir = join(root, 'ui', 'player');
+const distDir = join(sourceDir, 'dist');
+const targetDir = join(root, 'public', 'player');
+
+function run(cmd, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { cwd, stdio: 'inherit' });
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} ${args.join(' ')} exited with code ${code}`));
+    });
+  });
 }
+
+await run('npm', ['ci'], sourceDir);
+await run('npm', ['run', 'build'], sourceDir);
+await rm(targetDir, { recursive: true, force: true });
+await mkdir(targetDir, { recursive: true });
+await cp(distDir, targetDir, { recursive: true });

@@ -1,0 +1,445 @@
+import { API_BASE, authHeaders, credentialsMode } from '../config/apiConfig';
+import { requestJson } from './http';
+
+/**
+ * Speakers running Audioserver Client.
+ *
+ * These devices hold no settings of their own: they report the sound cards they have and take
+ * everything else from here. So this API carries three things at once per device — what it *is*
+ * (registration, read-only hardware), what it is *doing* (status, live), and what it *should be*
+ * (config, the only editable part). The view keeps them visually apart for the same reason.
+ */
+
+export type AudioserverCard = {
+  id: string;
+  name?: string;
+  channels?: number;
+  sample_rates?: number[];
+  is_default?: boolean;
+};
+
+export type AudioserverRegistration = {
+  deviceId: string;
+  agent?: string;
+  version?: string;
+  hostname?: string;
+  ip?: string;
+  mac?: string;
+  model?: string;
+  os?: string;
+  arch?: string;
+  outputs: AudioserverCard[];
+  inputs: AudioserverCard[];
+  capabilities?: { codecs?: string[]; max_players?: number; features?: string[] };
+  components?: Array<{ name?: string; version?: string | null; state?: string }>;
+  /** The audioservers this device can see, itself included. Empty from older clients. */
+  servers?: Array<{ name?: string; url?: string }>;
+  registeredAt?: number;
+};
+
+export type AudioserverPlayerStatus = {
+  client_id: string;
+  state: string;
+  output?: string;
+  codec?: string;
+  sample_rate?: number;
+  bit_depth?: number;
+  channels?: number;
+  volume?: number;
+  muted?: boolean;
+  static_delay_ms?: number;
+  clock_rtt_ms?: number;
+  clock_quality?: string;
+  last_error?: string | null;
+};
+
+export type AudioserverSourceStatus = {
+  client_id: string;
+  state: string;
+  input?: string;
+  level?: number;
+  signal?: string;
+  last_error?: string | null;
+};
+
+export type AudioserverStatus = {
+  state?: string;
+  version?: string;
+  uptime_s?: number;
+  players?: AudioserverPlayerStatus[];
+  sources?: AudioserverSourceStatus[];
+  components?: Array<{ name?: string; version?: string | null; state?: string; last_error?: string }>;
+  pairing?: { state?: string; address?: string; name?: string; message?: string };
+  /**
+   * The device's Bluetooth radio, as it reports it.
+   *
+   * Which room uses the radio is a zone setting, not a device one, so nothing here is editable —
+   * but the phone that is connected and what it is playing are only knowable from the device, and
+   * that is worth showing beside the box it is happening in.
+   */
+  bluetooth?: {
+    enabled?: boolean;
+    zone_id?: number;
+    name?: string;
+    discoverable?: boolean;
+    devices?: Array<{ address: string; name: string; connected?: boolean; streaming?: boolean }>;
+    now_playing?: { title?: string; artist?: string; album?: string; status?: string } | null;
+    last_error?: string | null;
+  };
+  beoremote?: {
+    state?: string;
+    zone_id?: number;
+    menu_revision?: string;
+    hid_connected?: boolean;
+    /**
+     * The remotes paired to this device, in the room or not. `kind` is which model it is, as the
+     * device itself recognised it: a Beoremote One has a display and assignable keys, an Essence
+     * has five fixed buttons and neither. Older clients do not send it.
+     */
+    devices?: Array<{
+      address: string;
+      name: string;
+      connected?: boolean;
+      kind?: 'one' | 'essence';
+    }>;
+    last_error?: string;
+  };
+};
+
+export type AudioserverPlayerConfig = {
+  clientId: string;
+  name?: string;
+  output?: string;
+  enabled?: boolean;
+  delayMs?: number;
+  volume?: number;
+  muted?: boolean;
+  volumeHook?: string;
+  /** Where the speaker applies volume. Absent means the device decides. */
+  volumeControl?: 'auto' | 'software' | 'alsa' | 'hook';
+  mixerElement?: string;
+  mixerMapped?: boolean;
+  codecs?: string[];
+  sampleRate?: number;
+  bitDepth?: number;
+  channels?: number;
+  bufferMs?: number;
+  requiredLeadTimeMs?: number;
+};
+
+export type AudioserverSourceConfig = {
+  clientId: string;
+  name?: string;
+  input?: string;
+  enabled?: boolean;
+  sampleRate?: number;
+  bitDepth?: number;
+  channels?: number;
+  frameMs?: number;
+  thresholdDb?: number;
+  holdMs?: number;
+  controls?: string[];
+  controlHook?: string;
+  alwaysOn?: boolean;
+};
+
+export type AudioserverBeoremoteConfig = {
+  enabled?: boolean;
+  zoneId?: number;
+  menuPollMs?: number;
+  volumePlayer?: string;
+  volumeStep?: number;
+};
+
+export type AudioserverDeviceConfig = {
+  deviceId: string;
+  name?: string;
+  enabled?: boolean;
+  /**
+   * The room this box serves, if it serves exactly one.
+   *
+   * Answering it once here is what saves naming the same device again as the room's speaker, as its
+   * Bluetooth and as its remote. Absent means the box stands on its own and is wired per role.
+   */
+  zoneId?: number | null;
+  players?: AudioserverPlayerConfig[];
+  sources?: AudioserverSourceConfig[];
+  beoremote?: AudioserverBeoremoteConfig | null;
+  requiredComponents?: string[];
+  lastSeen?: string;
+  hostname?: string;
+  ip?: string;
+  mac?: string;
+  model?: string;
+  version?: string;
+};
+
+export type AudioserverDeviceView = {
+  deviceId: string;
+  online: boolean;
+  /**
+   * Whether this server runs the device.
+   *
+   * False for a speaker that found several servers and has not been given to one: it shows on every
+   * one of their screens until somebody claims it, and has no settings until then.
+   */
+  claimed?: boolean;
+  config: AudioserverDeviceConfig | null;
+  registration: AudioserverRegistration | null;
+  status: AudioserverStatus | null;
+  statusReceivedAt: string | null;
+  queuedCommands: Array<{ command: string; args: string[] }>;
+};
+
+export type AudioserverComponentCatalogueEntry = {
+  name: string;
+  version?: string;
+  urls?: Record<string, string>;
+  sha256?: Record<string, string>;
+};
+
+export type AudioserverClientsResponse = {
+  devices: AudioserverDeviceView[];
+  components: AudioserverComponentCatalogueEntry[];
+  pollIntervalMs?: number;
+};
+
+/** What a `PUT` accepts. Every key is optional: an omitted one is left as it was. */
+export type AudioserverDeviceUpdate = {
+  name?: string;
+  enabled?: boolean;
+  /** The room this box serves; null hands it back its independence. */
+  zoneId?: number | null;
+  players?: AudioserverPlayerConfig[];
+  sources?: AudioserverSourceConfig[];
+  beoremote?: AudioserverBeoremoteConfig | null;
+  requiredComponents?: string[];
+};
+
+/** A rejected write, with the server's reason kept intact so the view can name it. */
+export class AudioserverClientError extends Error {
+  public readonly code: string;
+  /** Client ids still in use, when that is why the write was refused. */
+  public readonly clientIds: string[];
+
+  constructor(code: string, message: string, clientIds: string[] = []) {
+    super(message);
+    this.name = 'AudioserverClientError';
+    this.code = code;
+    this.clientIds = clientIds;
+  }
+}
+
+async function parseError(res: Response): Promise<never> {
+  const body = await res.json().catch(() => null);
+  const code = typeof body?.error === 'string' ? body.error : `http-${res.status}`;
+  const clientIds = Array.isArray(body?.clientIds) ? body.clientIds.filter((id: unknown) => typeof id === 'string') : [];
+  throw new AudioserverClientError(code, code, clientIds);
+}
+
+export async function listAudioserverClients(): Promise<AudioserverClientsResponse> {
+  const data = await requestJson<AudioserverClientsResponse>(`${API_BASE}/audioserverclients`, {
+    errorMessage: 'Could not load devices',
+  });
+  return {
+    devices: Array.isArray(data.devices) ? data.devices : [],
+    components: Array.isArray(data.components) ? data.components : [],
+    pollIntervalMs: data.pollIntervalMs,
+  };
+}
+
+export async function saveAudioserverClient(
+  deviceId: string,
+  update: AudioserverDeviceUpdate,
+): Promise<AudioserverDeviceView> {
+  const res = await fetch(`${API_BASE}/audioserverclients/${encodeURIComponent(deviceId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: credentialsMode(),
+    body: JSON.stringify(update),
+  });
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as AudioserverDeviceView;
+}
+
+export async function forgetAudioserverClient(deviceId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/audioserverclients/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+    credentials: credentialsMode(),
+  });
+  // 409 carries the client ids a zone still points at, which is the whole reason the user cannot
+  // remove this device yet — so it has to survive as data, not as a message.
+  if (!res.ok) await parseError(res);
+}
+
+export async function sendAudioserverClientCommand(
+  deviceId: string,
+  command: string,
+  args: string[] = [],
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/audioserverclients/${encodeURIComponent(deviceId)}/commands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: credentialsMode(),
+    body: JSON.stringify({ command, args }),
+  });
+  if (!res.ok) await parseError(res);
+}
+
+/**
+ * Take on a speaker that several servers can see.
+ *
+ * Nothing else in this API writes a device into a server's config, so this is where "this one is
+ * ours" is said. The device hears it on its next announcement and stops offering itself elsewhere.
+ */
+export async function claimAudioserverClient(deviceId: string): Promise<AudioserverDeviceView> {
+  const res = await fetch(`${API_BASE}/audioserverclients/${encodeURIComponent(deviceId)}/claim`, {
+    method: 'POST',
+    headers: authHeaders(),
+    credentials: credentialsMode(),
+  });
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as AudioserverDeviceView;
+}
+
+/** The last log a device handed over. `receivedAt` is null when it has not sent one yet. */
+export type AudioserverDeviceLogs = {
+  lines: string[];
+  receivedAt: string | null;
+};
+
+/**
+ * Read the last log a device sent.
+ *
+ * Reading and asking are two steps on purpose: the device only sends when told (`send_logs`), and
+ * it sends on its next poll, so the screen asks and then reads until something newer turns up.
+ */
+export async function fetchAudioserverClientLogs(deviceId: string): Promise<AudioserverDeviceLogs> {
+  const data = await requestJson<AudioserverDeviceLogs>(
+    `${API_BASE}/audioserverclients/${encodeURIComponent(deviceId)}/logs`,
+    { errorMessage: 'Could not load the log' },
+  );
+  return {
+    lines: Array.isArray(data.lines) ? data.lines : [],
+    receivedAt: typeof data.receivedAt === 'string' ? data.receivedAt : null,
+  };
+}
+
+/** Catalogue name under which the client's own build is published. */
+export const CLIENT_COMPONENT = 'audioserver-client';
+
+/**
+ * Publish a client version for every device to install.
+ *
+ * A version number, not a set of files: the server reads the hashes off the release, and a version
+ * whose builds are not all published is refused rather than half-applied.
+ */
+export async function setAudioserverClientVersion(version: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/audioserverclients/client-version`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: credentialsMode(),
+    body: JSON.stringify({ version }),
+  });
+  if (!res.ok) await parseError(res);
+}
+
+/** A player's name as the UI should show it: its own, else the card, else the id. */
+export function playerLabel(player: AudioserverPlayerConfig): string {
+  return player.name?.trim() || player.output?.trim() || player.clientId;
+}
+
+/**
+ * A card's name as the UI should show it, falling back to the device id it reported.
+ *
+ * ALSA names arrive as `driver_module, Human Readable Name` — the first half is the kernel module
+ * and means nothing to anyone choosing where a speaker is wired, so it goes.
+ */
+export function cardName(card: AudioserverCard): string {
+  const name = card.name?.trim();
+  if (!name || name === card.id) return cardSpec(card.id);
+  const parts = name.split(',').map((part) => part.trim()).filter(Boolean);
+  // A first segment with no spaces is the module id (`snd_rpi_hifiberry_dacplusadcpro`).
+  if (parts.length > 1 && !/\s/.test(parts[0])) parts.shift();
+  return parts.join(', ') || cardSpec(card.id);
+}
+
+/** The ALSA device behind a card id, without the prefix that says which subsystem it came from. */
+export function cardSpec(id: string): string {
+  return id.replace(/^alsa:/, '');
+}
+
+/** A card as one line in the picker: what it is, then which ALSA device that is. */
+export function cardLabel(card: AudioserverCard): string {
+  const name = cardName(card);
+  const spec = cardSpec(card.id);
+  return name === spec ? spec : `${name} — ${spec}`;
+}
+
+/**
+ * The cards, split into the ones anyone should pick and the rest.
+ *
+ * A Pi with two cards reports eighteen outputs: `hw` and `plughw` per card, plus every ALSA alias
+ * (`default`, `sysdefault`, `dmix`, `front`, `surround51`, …) pointing back at the same hardware.
+ * Listing all of them as equals is how someone ends up on `surround21` and hears nothing, so the
+ * direct devices lead and the aliases are still there, one group down, for the case that needs one.
+ */
+export function splitCards(cards: AudioserverCard[]): { direct: AudioserverCard[]; aliases: AudioserverCard[] } {
+  const direct: AudioserverCard[] = [];
+  const aliases: AudioserverCard[] = [];
+  for (const card of cards) {
+    (/^alsa:(plug)?hw:/.test(card.id) ? direct : aliases).push(card);
+  }
+  return { direct, aliases };
+}
+
+/**
+ * The device that plays a room, if a Audioserver Client does.
+ *
+ * A room is nearly always one box, and it has already said which: the thing that plays it. That
+ * makes it the obvious answer for the room's other radio work — the phone that pairs with it, the
+ * remote that drives it — so those do not have to be pointed at a device by hand. The server
+ * resolves this the same way when a room names none.
+ */
+export function devicePlayingRoom(
+  devices: AudioserverDeviceView[],
+  outputClientId: string | undefined,
+): AudioserverDeviceView | undefined {
+  const clientId = outputClientId?.trim();
+  if (!clientId) return undefined;
+  return devices.find((device) =>
+    (device.config?.players ?? []).some((player) => player.clientId === clientId),
+  );
+}
+
+/** What to call a device on screen: the name someone gave it, else what it registered as. */
+export function deviceLabel(device: AudioserverDeviceView): string {
+  return (
+    device.config?.name?.trim() ||
+    device.registration?.hostname?.trim() ||
+    device.config?.hostname?.trim() ||
+    device.deviceId
+  );
+}
+
+/**
+ * Client id for a new player or source on a device.
+ *
+ * The first player takes the device id itself, which is what the client defaults to; later ones get
+ * a suffix. Stability is the point: a zone's output points at this string, so it must not change
+ * when the user renames the room.
+ */
+export function nextClientId(device: AudioserverDeviceView, kind: 'player' | 'source'): string {
+  const used = new Set([
+    ...(device.config?.players ?? []).map((player) => player.clientId),
+    ...(device.config?.sources ?? []).map((source) => source.clientId),
+  ]);
+  const base = kind === 'player' ? device.deviceId : `${device.deviceId}-in`;
+  if (!used.has(base)) return base;
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `${base}-${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}-${Date.now()}`;
+}
