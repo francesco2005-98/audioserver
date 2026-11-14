@@ -560,9 +560,8 @@ export class ApiClient {
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    let res: Response;
     try {
-      res = await fetch(`${this.base}${path}`, {
+      const res = await fetch(`${this.base}${path}`, {
         method,
         signal: controller.signal,
         headers: {
@@ -571,35 +570,41 @@ export class ApiClient {
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
+
+      if (!res.ok) {
+        // The contract promises `{"error":"…"}` on 4xx, but a proxy or a crash can put
+        // HTML here instead, so a failed parse must not mask the status code.
+        let code = `http-${res.status}`;
+        let message: string | undefined;
+        let details: Record<string, unknown> = {};
+        try {
+          const payload = (await res.json()) as { error?: string; message?: string } & Record<
+            string,
+            unknown
+          >;
+          const { error, message: said, ...rest } = payload;
+          code = error ?? code;
+          message = said;
+          details = rest;
+        } catch {
+          // Keep the status-derived code.
+        }
+        throw new ApiError(res.status, code, message, details);
+      }
+
+      if (res.status === 204) {
+        return undefined as T;
+      }
+      return (await res.json()) as T;
     } catch (err) {
-      // A dropped connection and an aborted timeout look the same to the UI: the
-      // server is not answering. Distinguished from ApiError, which means it did.
+      if (err instanceof ApiError) {
+        throw err;
+      }
+      // A dropped connection, a stalled body and an aborted timeout look the same to
+      // the UI: the server is not answering. Distinguished from ApiError, which means it did.
       throw new ApiError(0, 'network-error', err instanceof Error ? err.message : undefined);
     } finally {
       clearTimeout(timer);
     }
-
-    if (!res.ok) {
-      // The contract promises `{"error":"…"}` on 4xx, but a proxy or a crash can put
-      // HTML here instead, so a failed parse must not mask the status code.
-      let code = `http-${res.status}`;
-      let message: string | undefined;
-      let details: Record<string, unknown> = {};
-      try {
-        const payload = (await res.json()) as { error?: string; message?: string } & Record<string, unknown>;
-        const { error, message: said, ...rest } = payload;
-        code = error ?? code;
-        message = said;
-        details = rest;
-      } catch {
-        // Keep the status-derived code.
-      }
-      throw new ApiError(res.status, code, message, details);
-    }
-
-    if (res.status === 204) {
-      return undefined as T;
-    }
-    return (await res.json()) as T;
   }
 }

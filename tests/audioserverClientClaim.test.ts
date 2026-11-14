@@ -91,6 +91,28 @@ test('a stale entry does not outrank the device: the drift is not repeated', asy
   assert.equal(answer.claimed, false, 'it goes back to the server it names');
 });
 
+test('claimed_at is when this server last heard the device, not when its name last changed', async () => {
+  const { handler, written } = handlerFor([
+    {
+      deviceId: 'audioserver-woonkamer-4791fbc6',
+      lastSeen: '2020-01-01T00:00:00.000Z',
+    } as { deviceId: string },
+  ]);
+  const answer = await register(handler, {
+    device_id: 'audioserver-woonkamer-4791fbc6',
+    outputs: [],
+    inputs: [],
+    servers: [{ name: 'This one', url: 'http://this-server:7090' }],
+    attached_to: 'http://this-server:7090',
+  });
+
+  const claimedAt = Date.parse(String(answer.claimed_at));
+  assert.ok(Number.isFinite(claimedAt));
+  assert.ok(Date.now() - claimedAt < 5_000);
+  const stored = Date.parse(String((written[0] as { lastSeen?: string }).lastSeen));
+  assert.ok(Date.now() - stored < 5_000);
+});
+
 test('a device that names this server is taken on', async () => {
   const { handler, written } = handlerFor([]);
   const answer = await register(handler, {

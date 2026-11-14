@@ -371,6 +371,7 @@ export class AudioserverClientApiHandler {
     const alone = (body?.servers?.length ?? 1) <= 1 && !attachedElsewhere;
     if (namesUs || claimedByHand || (known && !attachedElsewhere) || alone) {
       await this.rememberDevice(registration);
+      await this.touchLastSeen(deviceId);
       this.sendJson(res, 200, {
         ...this.buildDesiredState(deviceId, req),
         claimed: true,
@@ -423,7 +424,45 @@ export class AudioserverClientApiHandler {
    * left months ago answers with a date months old.
    */
   private claimedAt(deviceId: string): string | undefined {
-    return this.findDeviceConfig(deviceId)?.lastSeen;
+    const at = this.contactAt(deviceId);
+    return at > 0 ? new Date(at).toISOString() : undefined;
+  }
+
+  /**
+   * The latest moment this server actually heard the device.
+   *
+   * `lastSeen` in the config is only rewritten when the identity changes, so a speaker that
+   * has been polling for months still looked as if it had last spoken on the day it was
+   * adopted. Two servers then both offered the same old date, and the device could not tell
+   * which one had been talking to it.
+   */
+  private contactAt(deviceId: string): number {
+    const statusAt = this.statusByDevice.get(deviceId)?.receivedAt ?? 0;
+    const registeredAt = this.registrations.get(deviceId)?.registeredAt ?? 0;
+    const stored = Date.parse(this.findDeviceConfig(deviceId)?.lastSeen ?? '');
+    return Math.max(statusAt, registeredAt, Number.isFinite(stored) ? stored : 0);
+  }
+
+  /** Persist the contact time, but not on every five-second poll. */
+  private async touchLastSeen(deviceId: string): Promise<void> {
+    const existing = this.findDeviceConfig(deviceId);
+    if (!existing) {
+      return;
+    }
+    const previous = Date.parse(existing.lastSeen ?? '');
+    if (Number.isFinite(previous) && Date.now() - previous < 60_000) {
+      return;
+    }
+    const stamp = new Date().toISOString();
+    await this.configPort.updateConfig((config) => {
+      const devices = config.audioserverClients?.devices;
+      const index = devices?.findIndex((device) => device.deviceId === deviceId) ?? -1;
+      const current = devices?.[index];
+      if (!devices || !current) {
+        return;
+      }
+      devices[index] = { ...current, lastSeen: stamp };
+    });
   }
 
   /**
@@ -507,6 +546,7 @@ export class AudioserverClientApiHandler {
       players: Array.isArray(payload.players) ? payload.players.length : 0,
       sources: Array.isArray(payload.sources) ? payload.sources.length : 0,
     });
+    await this.touchLastSeen(deviceId);
     this.sendJson(res, 200, this.buildDesiredState(deviceId, req, { takeCommands: true }));
   }
 
@@ -1049,6 +1089,7 @@ export class AudioserverClientApiHandler {
     this.statusByDevice.delete(deviceId);
     this.commandQueues.delete(deviceId);
     this.pendingClaims.delete(deviceId);
+    this.logsByDevice.delete(deviceId);
     this.log.info('audioserver client forgotten', { deviceId });
   }
 
@@ -1140,23 +1181,43 @@ export class AudioserverClientApiHandler {
 
   private async readJsonBody(req: IncomingMessage): Promise<unknown | null> {
     const chunks: Buffer[] = [];
+    let size = 0;
+    const maxBytes = 1_000_000;
     return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value: unknown | null): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      };
       req.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buf.length;
+        if (size > maxBytes) {
+          req.destroy();
+          finish(null);
+          return;
+        }
+        chunks.push(buf);
       });
       req.on('end', () => {
         const raw = Buffer.concat(chunks).toString('utf8').trim();
         if (!raw) {
-          resolve(null);
+          finish(null);
           return;
         }
         try {
-          resolve(JSON.parse(raw));
+          finish(JSON.parse(raw));
         } catch {
-          resolve(null);
+          finish(null);
         }
       });
-      req.on('error', () => resolve(null));
+      // A client that drops the connection never emits `end`. Without these the
+      // poll stays open until the process does.
+      req.on('error', () => finish(null));
+      req.on('aborted', () => finish(null));
     });
   }
 
