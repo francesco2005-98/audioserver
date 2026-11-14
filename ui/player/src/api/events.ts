@@ -55,6 +55,22 @@ export class EventStream {
   }
 
   private connect(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    // Drop a socket that is already open before opening another. A second `open()`
+    // (a remount, a reconnect that overlaps the first) otherwise leaves two streams
+    // delivering the same zones.
+    const previous = this.source;
+    this.source = null;
+    if (previous) {
+      previous.onerror = null;
+      previous.onopen = null;
+      previous.onmessage = null;
+      previous.close();
+    }
+
     this.handlers.onStatus?.('connecting');
     // `EventSource` reconnects by itself, but only for a clean server-side close — not
     // for a connection that never opened (server down, DNS failure). Handling `onerror`
@@ -80,6 +96,7 @@ export class EventStream {
     };
 
     source.onerror = () => {
+      source.onerror = null;
       source.close();
       if (this.source === source) {
         this.source = null;
