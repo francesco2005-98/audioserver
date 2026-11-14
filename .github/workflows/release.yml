@@ -1,0 +1,270 @@
+name: Release
+
+on:
+  release:
+    types:
+      - published
+  push:
+    branches:
+      - dev
+      - test
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+      - name: Pin npm
+        run: |
+          corepack enable
+          corepack prepare npm@11.8.0 --activate
+          npm -v
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The build below asks each bundle repo for the newest release this version can serve,
+      # so a forgotten version bump would no longer fail loudly — it would quietly resolve an
+      # older console and ship it. The tag is the one place the intended version is written
+      # down twice, so check them against each other here instead.
+      - name: Check the version matches the tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "${TAG#v}" != "$PKG" ]; then
+            echo "Release tag $TAG does not match package.json ($PKG)."
+            echo "Bump the version in the commit being tagged, or tag v$PKG."
+            exit 1
+          fi
+          echo "releasing $PKG as $TAG"
+
+      - name: Build
+        run: npm run build
+        env:
+          # Release listings come from the API, which allows 60 requests an hour per IP to
+          # anonymous callers — and a CI runner's IP is not its own.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Define release build metadata
+        id: release_meta
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${{ github.event.release.prerelease }}" >> "$GITHUB_OUTPUT"
+
+      # Ahead of the image on purpose: this needs dist/ from Build and the tag from
+      # the step above, nothing from Docker — so the bundle is on the release in a
+      # minute instead of after the multi-arch build.
+      # Server-core self-update bundle consumed by POST /admin/api/server/update.
+      # dist/ is pure JS (arch-agnostic); node_modules is rebuilt on the target via
+      # npm ci, so a single tarball + the manifests is enough. public/ is excluded —
+      # the admin UI and player ship as their own bundles.
+      - name: Package server-dist bundle
+        shell: bash
+        run: |
+          tar -czf server-dist.tgz dist package.json package-lock.json
+          ls -lh server-dist.tgz
+
+      - name: Attach server-dist bundle to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.release_meta.outputs.tag }}" server-dist.tgz --clobber
+
+      - name: Define Docker tags
+        id: tags
+        shell: bash
+        run: |
+          if [ "${{ steps.release_meta.outputs.prerelease }}" = "true" ]; then
+            echo "tags=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ steps.release_meta.outputs.version }},ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:beta,ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:beta-latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ steps.release_meta.outputs.version }},ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            BUILD_VERSION=${{ steps.release_meta.outputs.version }}
+            BUILD_CHANNEL=${{ steps.release_meta.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+
+  dev:
+    if: ${{ github.ref_name == 'dev' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+      - name: Pin npm
+        run: |
+          corepack enable
+          corepack prepare npm@11.8.0 --activate
+          npm -v
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Declared here as well as on the image below, because `npm run build` fetches the web
+      # bundles and checks them against this checkout's version — and on dev that version is
+      # behind the code by design, so the newest bundle is what this image should carry.
+      # A CI checkout is on a detached HEAD, so the branch cannot be read; it has to be said.
+      - name: Build
+        run: npm run build
+        env:
+          BUILD_CHANNEL: dev
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Define dev build metadata
+        id: dev_meta
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          BUILD_TS=$(date -u +%Y%m%d%H%M%S)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_id=dev-$BUILD_TS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image (dev)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:dev,ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:dev-latest
+          build-args: |
+            BUILD_VERSION=${{ steps.dev_meta.outputs.version }}
+            BUILD_TIMESTAMP=${{ steps.dev_meta.outputs.build_id }}
+            BUILD_CHANNEL=dev
+
+  test:
+    if: ${{ github.ref_name == 'test' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+      - name: Pin npm
+        run: |
+          corepack enable
+          corepack prepare npm@11.8.0 --activate
+          npm -v
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Define test build metadata
+        id: test_meta
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          BUILD_TS=$(date -u +%Y%m%d%H%M%S)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_id=testing-$BUILD_TS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image (testing)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:testing,ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:testing-latest
+          build-args: |
+            BUILD_VERSION=${{ steps.test_meta.outputs.version }}
+            BUILD_TIMESTAMP=${{ steps.test_meta.outputs.build_id }}
+            BUILD_CHANNEL=testing

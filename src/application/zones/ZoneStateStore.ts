@@ -1,0 +1,329 @@
+import type { ZoneState } from '@/domain/zones/zoneState';
+import { applyZonePatch } from '@/domain/zones/reducer';
+import type { NotifierPort } from '@/ports/NotifierPort';
+import type { AudioManager } from '@/application/playback/audioManager';
+import { normalizeSpotifyAudiopath } from '@/application/zones/helpers/queueHelpers';
+import { AudioType, FileType } from '@/domain/zones/enums';
+import type { ZoneContext } from '@/application/zones/internal/zoneTypes';
+import { ZoneRepository } from '@/application/zones/ZoneRepository';
+
+type ZoneStateStoreDeps = {
+  isRadioAudiopath: (audiopath: string | undefined, audiotype?: number | null) => boolean;
+  isLineInAudiopath: (audiopath: string | undefined) => boolean;
+  syncGroupMembersPatch: (leaderId: number, patch: Partial<ZoneState>, force: boolean) => void;
+  onStatePatch?: (
+    zoneId: number,
+    patch: Partial<ZoneState>,
+    nextState: ZoneState,
+  ) => void;
+  notifyOutputMetadata: (
+    zoneId: number,
+    ctx: ZoneContext,
+    patch: Partial<ZoneState>,
+  ) => void;
+  notifier: NotifierPort;
+  audioManager: AudioManager;
+};
+
+export class ZoneStateStore {
+  constructor(
+    private readonly zoneRepo: ZoneRepository,
+    private readonly deps: ZoneStateStoreDeps,
+  ) {}
+
+  /** Read-only snapshot of the current zone state for external consumers (e.g. outputs). */
+  public getZoneState(zoneId: number): ZoneState | null {
+    const ctx = this.zoneRepo.get(zoneId);
+    return ctx ? ctx.state : null;
+  }
+
+  public getState(zoneId: number): ZoneState | undefined {
+    return this.zoneRepo.get(zoneId)?.state;
+  }
+
+  public setInitial(zoneId: number, state: ZoneState): void {
+    const ctx = this.zoneRepo.get(zoneId);
+    if (!ctx) {
+      return;
+    }
+    ctx.state = state;
+  }
+
+  public getMetadata(zoneId: number): Record<string, unknown> | undefined {
+    return this.zoneRepo.get(zoneId)?.metadata;
+  }
+
+  public getTechnicalSnapshot(zoneId: number): {
+    inputMode: ZoneContext['inputMode'];
+    activeInput: string | null;
+    activeOutput: string | null;
+    transports: string[];
+    outputs: string[];
+  } | null {
+    const ctx = this.zoneRepo.get(zoneId);
+    if (!ctx) {
+      return null;
+    }
+    const transports = ctx.outputs.map((t) => t.type);
+    const outputs =
+      ctx.activeOutput !== null
+        ? ctx.outputs.filter((t) => t.type === ctx.activeOutput).map((t) => t.type)
+        : [];
+    return {
+      inputMode: ctx.inputMode,
+      activeInput: ctx.activeInput,
+      activeOutput: ctx.activeOutput,
+      transports,
+      outputs,
+    };
+  }
+
+  public applyPatch(zoneId: number, patch: Partial<ZoneState>, force = false): void {
+    this.patch(zoneId, patch, force);
+  }
+
+  public patch(zoneId: number, patch: Partial<ZoneState>, force = false): void {
+    const ctx = this.zoneRepo.get(zoneId);
+    if (!ctx) {
+      return;
+    }
+
+    const mergedForType = applyZonePatch(ctx.state, patch);
+    const radioControllable = ctx.metadata.radioControllable === true;
+    const isRadioState =
+      this.deps.isRadioAudiopath(mergedForType.audiopath, mergedForType.audiotype) &&
+      !radioControllable;
+    const isLineInState = this.deps.isLineInAudiopath(mergedForType.audiopath);
+    const desiredType = resolveMediaKind(mergedForType.audiopath, mergedForType.audiotype);
+    if (desiredType !== mergedForType.type) {
+      patch.type = desiredType;
+    }
+    if (isRadioState) {
+      const artistValue =
+        typeof mergedForType.artist === 'string' ? mergedForType.artist.trim() : '';
+      if (!('audiotype' in patch) || patch.audiotype !== 1) {
+        patch.audiotype = 1;
+      }
+      if (!('time' in patch) || patch.time !== 0) {
+        patch.time = 0;
+      }
+      if (!('duration' in patch) || patch.duration !== 0) {
+        patch.duration = 0;
+      }
+      if (artistValue) {
+        if (!mergedForType.station?.trim()) {
+          if (ctx.state.station?.trim()) {
+            patch.station = ctx.state.station;
+          } else {
+            const fallback =
+              typeof ctx.metadata.radioStationFallback === 'string'
+                ? ctx.metadata.radioStationFallback
+                : '';
+            if (fallback) {
+              patch.station = fallback;
+            }
+          }
+        }
+      } else if (!mergedForType.station?.trim()) {
+        const fallback =
+          typeof ctx.metadata.radioStationFallback === 'string'
+            ? ctx.metadata.radioStationFallback
+            : '';
+        if (fallback) {
+          patch.station = fallback;
+        }
+      }
+    } else if (
+      !('station' in patch) &&
+      typeof mergedForType.station === 'string' &&
+      mergedForType.station.length > 0
+    ) {
+      // Symmetric to the radio clamps above: `station` is a radio-specific
+      // label and must drop the moment the merged state stops being a radio
+      // state, otherwise a leftover "ORF Hitradio OE3" pins itself on the
+      // next source (library track, AirPlay takeover, Spotify, …) until
+      // something else explicitly clears it. Incoming patches that carry an
+      // explicit `station` (e.g. BeoLink NOW_PLAYING with a station label
+      // from an AirPlay sender) win over this clamp.
+      patch.station = '';
+    }
+
+    const isStopping = patch.mode === 'stop';
+    const patchAudiopath =
+      typeof patch.audiopath === 'string' && patch.audiopath.trim().length > 0 ? patch.audiopath : null;
+    const audiopathChanged =
+      patchAudiopath !== null &&
+      normalizeSpotifyAudiopath(patchAudiopath) !== normalizeSpotifyAudiopath(ctx.state.audiopath);
+    const qidChanged =
+      typeof patch.qid === 'string' && patch.qid.trim().length > 0 && patch.qid !== ctx.state.qid;
+    const titleChanged =
+      typeof patch.title === 'string' &&
+      patch.title.trim().length > 0 &&
+      patch.title.trim() !== (ctx.state.title ?? '').trim();
+    const artistChanged =
+      typeof patch.artist === 'string' &&
+      patch.artist.trim().length > 0 &&
+      patch.artist.trim() !== (ctx.state.artist ?? '').trim();
+    const albumChanged =
+      typeof patch.album === 'string' &&
+      patch.album.trim().length > 0 &&
+      patch.album.trim() !== (ctx.state.album ?? '').trim();
+    const trackChanged = audiopathChanged || qidChanged || titleChanged || artistChanged || albumChanged;
+    const metadataBoundaryChanged = isStopping || audiopathChanged || qidChanged;
+    // A track's duration comes from its metadata and is fixed for that track. Guard it:
+    if ('duration' in patch) {
+      const nextDuration = patch.duration;
+      const currentDuration = ctx.state.duration;
+      if (
+        typeof nextDuration !== 'number' ||
+        (!isRadioState &&
+          !isLineInState &&
+          !isStopping &&
+          nextDuration <= 0 &&
+          // Allow clearing duration on track change for controllable radio sources (e.g. Radio Paradise),
+          // where the API may not provide duration for every "now playing" update.
+          !(ctx.metadata.radioControllable === true && trackChanged && nextDuration === 0))
+      ) {
+        // Never overwrite a valid duration with a zero/invalid value.
+        delete patch.duration;
+      } else if (
+        !isRadioState &&
+        !isLineInState &&
+        !isStopping &&
+        !trackChanged &&
+        typeof currentDuration === 'number' &&
+        currentDuration > 0
+      ) {
+        // Same track: keep the duration already established from metadata; ignore a value
+        // carried by a jittery timing update. (A lingering previous session can still emit
+        // its own duration across an Apple Music handoff; `Math.max` used to latch that
+        // stale, larger value over the new track's real duration.)
+        delete patch.duration;
+      }
+    }
+    if (
+      (audiopathChanged || qidChanged) &&
+      !isStopping &&
+      !isRadioState &&
+      !isLineInState &&
+      !(typeof patch.duration === 'number' && patch.duration > 0)
+    ) {
+      // Genuine track boundary without a new duration in this patch: drop the previous
+      // track's duration so the new track's duration (which may land in a later patch) is
+      // accepted instead of being blocked by the same-track guard above.
+      patch.duration = 0;
+    }
+
+    const entries = Object.entries(patch);
+    // Skip if nothing actually changes.
+    if (!force && !entries.some(([key, value]) => (ctx.state as unknown as Record<string, unknown>)[key] !== value)) {
+      return;
+    }
+
+    const nextState = applyZonePatch(ctx.state, patch);
+    ctx.state = nextState;
+
+    const isTimeOnlyUpdate = entries.length === 1 && entries[0]![0] === 'time';
+    const now = Date.now();
+    // Avoid blasting Loxone clients with time-only ticks faster than ~1 Hz.
+    if (force || !(isTimeOnlyUpdate && now - ctx.lastZoneBroadcastAt < 1000)) {
+      ctx.lastZoneBroadcastAt = now;
+      this.deps.notifier.notifyZoneStateChanged(ctx.state);
+    }
+    this.deps.onStatePatch?.(zoneId, patch, nextState);
+    this.deps.syncGroupMembersPatch(zoneId, patch, force);
+    const session = this.deps.audioManager.getSession(zoneId);
+    if (session) {
+      if ('time' in patch || 'duration' in patch) {
+        const elapsed = typeof ctx.state.time === 'number' ? ctx.state.time : session.elapsed;
+        const duration = typeof ctx.state.duration === 'number' ? ctx.state.duration : session.duration;
+        this.deps.audioManager.updateSessionTiming(zoneId, elapsed, duration);
+      }
+      const hasMetadataUpdate =
+        'title' in patch ||
+        'artist' in patch ||
+        'album' in patch ||
+        'coverurl' in patch ||
+        'animatedCoverUrl' in patch ||
+        'station' in patch ||
+        'audiopath' in patch;
+      if (hasMetadataUpdate) {
+        const base = session.metadata ?? { title: '', artist: '', album: '' };
+        const selectString = (
+          key: 'title' | 'artist' | 'album' | 'coverurl' | 'animatedCoverUrl' | 'audiopath' | 'station',
+        ): string | undefined => {
+          if (key === 'station' && !('station' in patch)) {
+            return typeof ctx.state.station === 'string' ? ctx.state.station : '';
+          }
+          if (key in patch) {
+            const value = ctx.state[key];
+            return typeof value === 'string' ? value : '';
+          }
+          if (metadataBoundaryChanged && key !== 'station') {
+            return '';
+          }
+          const value = base[key];
+          return typeof value === 'string' ? value : undefined;
+        };
+        const selectDuration = (): number | undefined => {
+          if ('duration' in patch) {
+            return typeof ctx.state.duration === 'number' && ctx.state.duration > 0 ? ctx.state.duration : 0;
+          }
+          if (metadataBoundaryChanged) {
+            return 0;
+          }
+          return typeof base.duration === 'number' ? base.duration : undefined;
+        };
+        const nextMetadata = {
+          title: selectString('title') ?? '',
+          artist: selectString('artist') ?? '',
+          album: selectString('album') ?? '',
+          coverurl: selectString('coverurl'),
+          animatedCoverUrl: selectString('animatedCoverUrl'),
+          duration: selectDuration(),
+          audiopath: selectString('audiopath'),
+          station: selectString('station'),
+          trackId: base.trackId,
+          stationIndex: base.stationIndex,
+          queue: base.queue,
+          queueIndex: base.queueIndex,
+        };
+        const prev = session.metadata;
+        const unchanged =
+          prev &&
+          prev.title === nextMetadata.title &&
+          prev.artist === nextMetadata.artist &&
+          prev.album === nextMetadata.album &&
+          prev.coverurl === nextMetadata.coverurl &&
+          prev.animatedCoverUrl === nextMetadata.animatedCoverUrl &&
+          prev.duration === nextMetadata.duration &&
+          prev.audiopath === nextMetadata.audiopath &&
+          prev.station === nextMetadata.station;
+        if (!unchanged) {
+          this.deps.audioManager.updateSessionMetadata(zoneId, nextMetadata);
+        }
+      }
+    }
+    this.deps.notifyOutputMetadata(zoneId, ctx, patch);
+  }
+
+}
+
+/**
+ * Which media kind a zone should report, given what it is playing. A line-in-ish
+ * source reads as line-in, radio as a single file, everything else as a queue. Uses
+ * only domain enums — the numbering happens to be Loxone's, like the enums themselves.
+ */
+function resolveMediaKind(audiopath: string | undefined, audiotype?: number | null): FileType {
+  if (audiotype === AudioType.LineIn || audiotype === AudioType.AirPlay || audiotype === AudioType.Bluetooth) {
+    return FileType.LineIn;
+  }
+  if (audiotype === AudioType.Radio) {
+    return FileType.File;
+  }
+  const raw = (audiopath ?? '').trim().toLowerCase();
+  if (raw.startsWith('linein:') || raw.startsWith('linein://')) {
+    return FileType.LineIn;
+  }
+  return FileType.Playlist;
+}

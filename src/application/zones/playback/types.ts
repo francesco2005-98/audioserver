@@ -1,0 +1,67 @@
+import type { PlaybackMetadata } from '@/ports/types/playback';
+import type { QueueAuthority, ZoneContext } from '@/application/zones/internal/zoneTypes';
+import type { ParentContext } from '@/application/zones/policies/ParentContextPolicy';
+import type { ZoneState } from '@/domain/zones/zoneState';
+
+export type InputStartDecision = {
+  mode: ZoneContext['inputMode'];
+  queueAuthority: QueueAuthority;
+};
+
+export type ProviderAction =
+  | { type: 'setRadioStationFallback'; value: string }
+  | { type: 'setRadioControllable'; value: boolean };
+
+export type ProviderPatchResult = {
+  patch: Partial<ZoneState>;
+  actions?: ProviderAction[];
+};
+
+export type VolumeCommandIntent = {
+  command: string;
+  rawPayload?: string;
+  parsed: number;
+  isRelative: boolean;
+};
+
+export type CommandIntent =
+  | { kind: 'PlayResume' }
+  | { kind: 'Pause' }
+  | { kind: 'StopOff' }
+  | { kind: 'Position'; posSeconds: number }
+  | { kind: 'Volume'; volume: VolumeCommandIntent }
+  /** `null` toggles, which is what a remote's mute key means. */
+  | { kind: 'Mute'; muted: boolean | null }
+  | { kind: 'QueueStep'; delta: 1 | -1 }
+  | { kind: 'QueuePlayCurrent' }
+  | { kind: 'Shuffle'; enabled: boolean | null }
+  | { kind: 'Repeat'; value: number | null };
+
+export type ResolvedPlayRequest = {
+  uri: string;
+  type: string;
+  metadata?: PlaybackMetadata;
+  parentContext: ParentContext | null;
+  hasParentContext: boolean;
+  resolvedTarget: string;
+  normalizedTarget: string;
+  stationUri: string;
+  queueAudiopath: string;
+  isMusicAssistantInitial: boolean;
+  isMusicAssistant: boolean;
+  /**
+   * Which service owns this request, or null when nothing bridged does. Ask it
+   * by property — isBridgeQueueService, hasSlowStreamResolution — rather than
+   * comparing it to a name, unless the rule really is about that one service.
+   */
+  provider: string | null;
+  isSpotify: boolean;
+  nextInput: ZoneContext['inputMode'];
+  stationValue: string;
+  isRadio: boolean;
+  queueSourcePath: string;
+  targetForQueueBuild: string;
+  shouldLimitQueueBuild: boolean;
+  queueBuildLimit?: number;
+  isLineIn: boolean;
+};

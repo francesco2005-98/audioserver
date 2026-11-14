@@ -1,0 +1,104 @@
+import type { ZoneContext } from '@/application/zones/internal/zoneTypes';
+import type { ZoneState } from '@/domain/zones/zoneState';
+import type { PlaybackErrorOrigin } from '@/ports/types/playback';
+import type { ComponentLogger } from '@/shared/logging/logger';
+
+const IGNORED_PLAYER_ERROR_REASONS = new Set([
+  'alert_stop',
+  'input_stop',
+  'reconfigure',
+  'shutdown',
+  'command_stop',
+  'queue_empty',
+  'queue_end',
+  'airplay_forced_stop',
+  'airplay_stop',
+]);
+
+// User-facing, non-technical titles shown in the zone's now-playing metadata.
+// The raw technical reason is never surfaced here — it only goes to the log.
+const DEFAULT_ERROR_TITLE = 'Playback unavailable';
+
+const PLAYBACK_ERROR_TITLES: Record<string, string> = {
+  uri: DEFAULT_ERROR_TITLE,
+  auth: 'Sign-in required',
+  device: 'Output unavailable',
+  error: DEFAULT_ERROR_TITLE,
+  queue_invalid_next: "Couldn't play next track",
+  queue_next_failed: "Couldn't play next track",
+  'airplay no source': 'AirPlay unavailable',
+  'airplay engine not ready': 'AirPlay unavailable',
+  'airplay pcm not ready': 'AirPlay unavailable',
+  'airplay pcm stream unavailable': 'AirPlay unavailable',
+  'airplay stream not ready': 'AirPlay unavailable',
+  'spotify audio stream unavailable': 'Spotify unavailable',
+  'spotify audio_key_error': 'Spotify unavailable',
+};
+
+type PlaybackErrorCoordinator = {
+  getZone: (zoneId: number) => ZoneContext | undefined;
+  applyPatch: (zoneId: number, patch: Partial<ZoneState>) => void;
+  log: ComponentLogger;
+};
+
+export function handlePlaybackError(args: {
+  coordinator: PlaybackErrorCoordinator;
+  zoneId: number;
+  reason: string | undefined;
+  source: 'player' | 'output';
+  extraLog?: Record<string, unknown>;
+  origin?: PlaybackErrorOrigin;
+}): void {
+  const { coordinator, zoneId, reason, source, extraLog, origin } = args;
+  const ctx = coordinator.getZone(zoneId);
+  if (!ctx) {
+    return;
+  }
+  const normalized = typeof reason === 'string' ? reason.trim() : '';
+  if (normalized && IGNORED_PLAYER_ERROR_REASONS.has(normalized)) {
+    return;
+  }
+  if (hasMovedOn(ctx, origin)) {
+    coordinator.log.debug('ignoring playback error from a source the zone has moved on from', {
+      zoneId,
+      reason: normalized || undefined,
+      source,
+      origin,
+      inputMode: ctx.inputMode,
+    });
+    return;
+  }
+  const cleaned = normalized ? normalized.replace(/\s+/g, ' ') : '';
+  const title =
+    (cleaned ? PLAYBACK_ERROR_TITLES[cleaned.toLowerCase()] : undefined) ?? DEFAULT_ERROR_TITLE;
+  coordinator.applyPatch(zoneId, {
+    title,
+    artist: '',
+    album: '',
+    coverurl: '',
+    audiopath: '',
+    station: '',
+    time: 0,
+    duration: 0,
+    mode: 'stop',
+    clientState: 'on',
+    power: 'on',
+    sourceName: ctx.sourceMac,
+  });
+  if (ctx.player.getState().mode !== 'stopped') {
+    ctx.player.stop();
+  }
+  coordinator.log.warn('playback error', { zoneId, reason: cleaned || undefined, title, source, ...extraLog });
+}
+
+/**
+ * True when the error concerns a source this zone no longer plays.
+ *
+ * An announcement, a next track or a switch of input replaces what a zone renders in
+ * milliseconds, while the source it displaced can take seconds to notice and complain.
+ * Acting on that complaint stops the wrong thing — a TTS clip fell silent 0.6 s in
+ * because the Spotify session it had just replaced reported a dead audio key (#293).
+ */
+function hasMovedOn(ctx: ZoneContext, origin: PlaybackErrorOrigin | undefined): boolean {
+  return origin !== undefined && ctx.inputMode !== origin.input;
+}

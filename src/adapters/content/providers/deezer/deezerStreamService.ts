@@ -1,0 +1,1008 @@
+import { createLogger } from '@/shared/logging/logger';
+import { safeReadText } from '@/shared/bestEffort';
+import type { ConfigPort } from '@/ports/ConfigPort';
+import type { StreamingServiceConfig } from '@/domain/config/types';
+import type { PlaybackSource } from '@/ports/EngineTypes';
+import { parseTrackAudiopath } from '@/domain/zones/audiopath';
+import { findBridgeForProviderKey } from '@/adapters/content/providers/bridgeLookup';
+import { slugFromBridgeId } from '@/domain/media/serviceIdentity';
+import { type IncomingMessage, type ServerResponse } from 'node:http';
+import { resolveProxyHost, resolveProxyPort } from '@/shared/urlProxy';
+import { pruneExpiredSessions, type StreamProxyRoute } from '@/shared/streamProxyRoute';
+import { randomUUID, createCipheriv, createHash } from 'node:crypto';
+import { Transform, Readable, PassThrough } from 'node:stream';
+import { once } from 'node:events';
+// egoroof-blowfish ships ESM only (main: dist/blowfish.mjs); require() keeps the
+// import synchronous here, which Node's require(esm) support makes safe.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { Blowfish } = require('egoroof-blowfish');
+
+const DEEZER_TRACK_URL = 'https://www.deezer.com/us/track';
+const DEEZER_API_BASE = 'https://api.deezer.com';
+const DEEZER_CDN_BASES = [
+  'https://e-cdns-proxy-',
+  'https://e-cdn-proxy-',
+  'https://cdns-proxy-',
+  'https://cdn-proxy-',
+];
+const DEEZER_CDN_PREFIXES = ['a', 'b', 'c', 'd'];
+const DEEZER_AES_KEY = 'jo6aey6haid2Teih';
+const DEEZER_BF_KEY = Buffer.from('g4el58wc0zvf9na1', 'utf8');
+const DEEZER_BF_IV = Buffer.from('0001020304050607', 'hex');
+const BLOCK_SIZE = 2048;
+const DEEZER_JITTER_BUFFER_BYTES = 1024 * 1024 * 2;
+/** How long upstream may go quiet — while we are waiting on it — before we re-request. */
+const DEEZER_STALL_TIMEOUT_MS = 4000;
+/** Backstop against a pathological loop of tiny-progress resumes; a sane track needs a handful. */
+const DEEZER_MAX_STREAM_ATTEMPTS = 64;
+
+type DeezerPlaybackResult = {
+  playbackSource: PlaybackSource | null;
+  outputOnly?: boolean;
+};
+
+type DeezerTrackRequest = {
+  providerId: string;
+  trackId: string;
+  bridge: StreamingServiceConfig;
+};
+
+type DeezerSongData = {
+  SNG_ID?: string | number;
+  MD5_ORIGIN?: string;
+  MEDIA_VERSION?: string | number;
+  FILESIZE_FLAC?: string | number;
+  FILESIZE_MP3_320?: string | number;
+  FILESIZE_MP3_128?: string | number;
+  TRACK_TOKEN?: string;
+  FALLBACK?: DeezerSongData;
+};
+
+type DeezerProxySession = {
+  id: string;
+  urls: string[];
+  headers: Record<string, string>;
+  blowfishKey: Buffer;
+  format?: number;
+  createdAt: number;
+  estimatedSize?: number;
+};
+
+type OutputErrorHandler = (zoneId: number, reason?: string) => void;
+
+class DeezerDecryptStream extends Transform {
+  private buffer = Buffer.alloc(0);
+  private blockIndex = 0;
+  private readonly blowfish: any;
+  constructor(private readonly key: Buffer) {
+    super();
+    const mode = Blowfish.MODE.CBC;
+    const padding = Blowfish.PADDING.NULL;
+    this.blowfish = new Blowfish(this.key, mode, padding);
+  }
+
+  public override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    while (this.buffer.length >= BLOCK_SIZE) {
+      const block: Buffer = this.buffer.subarray(0, BLOCK_SIZE);
+      this.buffer = this.buffer.subarray(BLOCK_SIZE);
+      let out: Buffer = block;
+      if ((this.blockIndex % 3) === 0) {
+        out = this.decryptBlock(block);
+      }
+      this.push(out);
+      this.blockIndex += 1;
+    }
+    callback();
+  }
+
+  public override _flush(callback: (error?: Error | null) => void): void {
+    if (this.buffer.length > 0) {
+      this.push(this.buffer);
+      this.buffer = Buffer.alloc(0);
+    }
+    callback();
+  }
+
+  private decryptBlock(data: Buffer): Buffer {
+    this.blowfish.setIv(DEEZER_BF_IV);
+    const decrypted = this.blowfish.decode(data, Blowfish.TYPE.UINT8_ARRAY);
+    return Buffer.from(decrypted);
+  }
+}
+
+class DeezerJitterBuffer extends Transform {
+  private bufferedBytes = 0;
+  private bufferedChunks: Buffer[] = [];
+  private released = false;
+  constructor(private readonly minBytes: number) {
+    super();
+  }
+
+  public override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    if (!this.released) {
+      this.bufferedChunks.push(chunk);
+      this.bufferedBytes += chunk.length;
+      if (this.bufferedBytes >= this.minBytes) {
+        for (const buffered of this.bufferedChunks) {
+          this.push(buffered);
+        }
+        this.bufferedChunks = [];
+        this.released = true;
+      }
+      callback();
+      return;
+    }
+    this.push(chunk);
+    callback();
+  }
+
+  public override _flush(callback: (error?: Error | null) => void): void {
+    if (!this.released) {
+      for (const buffered of this.bufferedChunks) {
+        this.push(buffered);
+      }
+      this.bufferedChunks = [];
+    }
+    callback();
+  }
+}
+
+function formatContentType(format?: number): string {
+  if (format === 9) return 'audio/flac';
+  return 'audio/mpeg';
+}
+
+export class DeezerStreamService {
+  private readonly log = createLogger('Content', 'DeezerStream');
+  private readonly bridgesByProvider = new Map<string, StreamingServiceConfig>();
+  private readonly bridgesById = new Map<string, StreamingServiceConfig>();
+  private readonly proxySessions = new Map<string, DeezerProxySession>();
+  private readonly configPort: ConfigPort;
+
+  constructor(private readonly notifyOutputError: OutputErrorHandler, configPort: ConfigPort) {
+    this.configPort = configPort;
+  }
+
+  public configureFromConfig(): void {
+    this.bridgesByProvider.clear();
+    this.bridgesById.clear();
+    const bridges = this.configPort.getConfig().content?.streamingServices ?? [];
+    const deezerBridges = bridges.filter((b) => (b.provider || '').toLowerCase() === 'deezer');
+    const single = deezerBridges.length <= 1;
+    for (const bridge of deezerBridges) {
+      const providerId = `spotify@${bridge.id}`;
+      this.bridgesByProvider.set(providerId, bridge);
+      this.bridgesById.set(bridge.id, bridge);
+      const slug = slugFromBridgeId(bridge.id, 'deezer');
+      this.bridgesByProvider.set(`deezer:${slug}`, bridge);
+      if (single) { this.bridgesByProvider.set('deezer', bridge); }
+    }
+  }
+
+  public isDeezerProvider(providerId: string): boolean {
+    if (!providerId) return false;
+    if (this.bridgesByProvider.has(providerId)) return true;
+    const id = providerId.split('@')[1] ?? providerId;
+    if (this.bridgesById.has(id)) return true;
+    return providerId.toLowerCase().includes('deezer');
+  }
+
+  public async startStreamForAudiopath(
+    zoneId: number | undefined,
+    audiopath: string,
+    options?: { suppressErrors?: boolean },
+  ): Promise<DeezerPlaybackResult> {
+    const suppressErrors = options?.suppressErrors === true;
+    const request = this.parseTrackRequest(audiopath);
+    if (!request) {
+      this.log.warn('deezer stream request unresolved', { zoneId, audiopath });
+      this.reportPlaybackError(zoneId, 'deezer invalid request', suppressErrors);
+      return { playbackSource: null };
+    }
+
+    let urls: string[] = [];
+    let blowfishKey: Buffer | null = null;
+    let usedMethod = 'md5origin';
+    let formatHint: number | undefined;
+
+    const gwStream = await this.fetchGwStream(request);
+    if (gwStream) {
+      urls = [gwStream.url];
+      blowfishKey = calcBlowfishKey(gwStream.songId);
+      usedMethod = 'gw';
+      formatHint = gwStream.format;
+    } else {
+      const song = await this.fetchSongData(request);
+      if (!song) {
+        this.reportPlaybackError(zoneId, 'deezer track data unavailable', suppressErrors);
+        return { playbackSource: null };
+      }
+
+      const songId = String(song.SNG_ID ?? request.trackId);
+      const md5OriginRaw = String(song.MD5_ORIGIN ?? '');
+      const mediaVersion = String(song.MEDIA_VERSION ?? '');
+      if (!songId || !md5OriginRaw || !mediaVersion) {
+        this.log.warn('deezer track missing stream metadata', {
+          zoneId,
+          songId,
+          md5OriginRaw,
+          mediaVersion,
+        });
+        this.reportPlaybackError(zoneId, 'deezer missing stream metadata', suppressErrors);
+        return { playbackSource: null };
+      }
+
+      const md5Origin = md5OriginRaw.split('.')[0] || md5OriginRaw;
+      const formats = resolveFormatCandidates(song);
+      urls = buildStreamUrls(songId, md5Origin, mediaVersion, formats);
+      formatHint = formats[0];
+      this.log.debug('deezer stream candidates', {
+        trackId: request.trackId,
+        songId,
+        md5Origin,
+        mediaVersion,
+        formats,
+      });
+      if (urls.length === 0) {
+        this.reportPlaybackError(zoneId, 'deezer stream url unavailable', suppressErrors);
+        return { playbackSource: null };
+      }
+      blowfishKey = calcBlowfishKey(songId);
+    }
+
+    if (!blowfishKey) {
+      this.reportPlaybackError(zoneId, 'deezer stream key unavailable', suppressErrors);
+      return { playbackSource: null };
+    }
+    const sessionId = randomUUID();
+    const headers = this.buildHeaders(request.bridge);
+    // Primary cleanup is per-request (req.on('close') in handleProxyRequest);
+    // this prunes sessions that were created but never connected (aborted before
+    // ffmpeg pulled the stream). Safe here because the handler reads the map only
+    // once at connect, so an in-flight stream is never evicted from under itself.
+    pruneExpiredSessions(this.proxySessions);
+    this.proxySessions.set(sessionId, {
+      id: sessionId,
+      urls,
+      headers,
+      blowfishKey,
+      format: formatHint,
+      createdAt: Date.now(),
+      estimatedSize: gwStream?.size,
+    });
+
+    const streamUrl = `http://${resolveProxyHost()}:${resolveProxyPort()}/deezer/${sessionId}/stream`;
+    this.log.info('deezer stream ready', {
+      zoneId,
+      trackId: request.trackId,
+      sessionId,
+      method: usedMethod,
+    });
+    return {
+      playbackSource: {
+        kind: 'url',
+        url: streamUrl,
+        realTime: false,
+        lowLatency: false,
+      },
+    };
+  }
+
+  private reportPlaybackError(zoneId: number | undefined, reason: string, suppressErrors = false): void {
+    if (suppressErrors) return;
+    // No zone to route the error to (ephemeral/non-zone requester) — stay silent.
+    if (zoneId == null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    this.notifyOutputError(zoneId, trimmed);
+  }
+
+  private parseTrackRequest(audiopath: string): DeezerTrackRequest | null {
+    const parsed = parseTrackAudiopath(audiopath);
+    if (!parsed || parsed.kind !== 'track') return null;
+    const bridge = findBridgeForProviderKey(
+      parsed.providerKey,
+      this.bridgesByProvider,
+      this.bridgesById,
+    );
+    if (!bridge) return null;
+    return { providerId: parsed.providerKey, trackId: parsed.id, bridge };
+  }
+
+  private buildHeaders(bridge: StreamingServiceConfig): Record<string, string> {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+      Accept: '*/*',
+      'Accept-Language': 'en-US',
+      Referer: 'https://www.deezer.com/',
+      Origin: 'https://www.deezer.com',
+    };
+    const arl = bridge.deezerArl?.trim();
+    if (arl) {
+      headers.Cookie = `arl=${arl}; comeback=1`;
+    }
+    return headers;
+  }
+
+  private async fetchSongData(request: DeezerTrackRequest): Promise<DeezerSongData | null> {
+    const html = await this.fetchTrackPage(request.trackId, request.bridge);
+    const song = html ? this.extractSongData(html) : null;
+    if (song?.SNG_ID && song?.MD5_ORIGIN && song?.MEDIA_VERSION) {
+      return song;
+    }
+    const apiSong = await this.fetchTrackApi(request.trackId);
+    if (apiSong?.SNG_ID && apiSong?.MD5_ORIGIN && apiSong?.MEDIA_VERSION) {
+      return apiSong;
+    }
+    return song ?? apiSong;
+  }
+
+  private async fetchGwStream(
+    request: DeezerTrackRequest,
+  ): Promise<{ url: string; songId: string; size?: number; format?: number } | null> {
+    const arl = request.bridge.deezerArl?.trim();
+    if (!arl) {
+      this.log.debug('deezer gw stream skipped; missing arl');
+      return null;
+    }
+
+    const userDataResponse = await this.fetchGwUserData(arl);
+    const userData = userDataResponse?.data;
+    const cookieHeader = userDataResponse?.cookie ?? '';
+    if (!userData) {
+      this.log.warn('deezer gw user data missing');
+    }
+    const checkForm = this.extractCheckForm(userData?.results);
+    const licenseToken = userData?.results?.USER?.OPTIONS?.license_token;
+    this.log.debug('deezer gw user data summary', {
+      hasCheckForm: Boolean(checkForm),
+      hasLicense: Boolean(licenseToken),
+      userId: userData?.results?.USER?.USER_ID,
+      offerId: userData?.results?.OFFER_ID,
+    });
+    if (!checkForm || !licenseToken) {
+      this.log.warn('deezer gw user data incomplete', {
+        hasCheckForm: Boolean(checkForm),
+        hasLicense: Boolean(licenseToken),
+      });
+      return null;
+    }
+
+    const songData = await this.fetchGwSongData(arl, cookieHeader, checkForm, request.trackId);
+    if (!songData) {
+      this.log.warn('deezer gw song data missing', { trackId: request.trackId });
+      return null;
+    }
+    const resolvedSong = songData.FALLBACK ?? songData;
+    const trackToken = resolvedSong.TRACK_TOKEN;
+    const songId = String(resolvedSong.SNG_ID ?? request.trackId);
+    if (!trackToken || !songId) {
+      this.log.warn('deezer gw track token missing', {
+        trackId: request.trackId,
+        hasToken: Boolean(trackToken),
+        songId,
+      });
+      return null;
+    }
+
+    const formats = this.resolveGwFormats(userData);
+    const stream = await this.fetchGwStreamUrl(licenseToken, trackToken, formats);
+    if (!stream?.url) {
+      this.log.warn('deezer gw stream url missing', { trackId: request.trackId });
+      return null;
+    }
+    return { url: stream.url, songId, size: stream.size, format: mapGwFormatToId(stream.format) };
+  }
+
+  private async fetchGwUserData(
+    arl: string,
+  ): Promise<{ data: any; cookie: string } | null> {
+    try {
+      const params = new URLSearchParams({
+        api_version: '1.0',
+        api_token: 'null',
+        input: '3',
+        method: 'deezer.getUserData',
+      });
+      const res = await fetch(`https://www.deezer.com/ajax/gw-light.php?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders({ deezerArl: arl } as StreamingServiceConfig),
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!res.ok) {
+        const body = await safeReadText(res, '', {
+          onError: 'debug',
+          log: this.log,
+          label: 'deezer gw user data read failed',
+          context: { status: res.status },
+        });
+        this.log.warn('deezer gw user data failed', { status: res.status, body: body.slice(0, 200) });
+        return null;
+      }
+      const data = (await res.json()) as Record<string, any>;
+      if (hasGwError(data?.error)) {
+        this.log.warn('deezer gw user data error', { error: data.error });
+      }
+      const cookie = extractCookiesFromResponse(res, arl);
+      return { data, cookie };
+    } catch (err) {
+      this.log.debug('deezer gw user data failed', { message: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
+  }
+
+  private async fetchGwSongData(
+    arl: string,
+    cookieHeader: string,
+    apiToken: string,
+    trackId: string,
+  ): Promise<DeezerSongData | null> {
+    try {
+      const params = new URLSearchParams({
+        api_version: '1.0',
+        api_token: apiToken || 'null',
+        input: '3',
+        method: 'song.getData',
+      });
+      const res = await fetch(`https://www.deezer.com/ajax/gw-light.php?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders({ deezerArl: arl } as StreamingServiceConfig),
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ SNG_ID: trackId }),
+      });
+      if (!res.ok) {
+        const body = await safeReadText(res, '', {
+          onError: 'debug',
+          log: this.log,
+          label: 'deezer gw song data read failed',
+          context: { status: res.status },
+        });
+        this.log.warn('deezer gw song data failed', { status: res.status, body: body.slice(0, 200) });
+        return null;
+      }
+      const data = (await res.json()) as Record<string, any>;
+      const results = data?.results ?? null;
+      if (hasGwError(data?.error)) {
+        this.log.warn('deezer gw song data error', { error: data.error });
+      }
+      if (!results || hasGwError(data?.error)) {
+        return null;
+      }
+      return results as DeezerSongData;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractCheckForm(results: any): string | null {
+    if (!results || typeof results !== 'object') {
+      return null;
+    }
+    const candidates = [
+      results.checkForm,
+      results.checkform,
+      results.CHECKFORM,
+      results.check_form,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return null;
+  }
+
+  private resolveGwFormats(userData: any): Array<{ cipher: string; format: string }> {
+    const formats: Array<{ cipher: string; format: string }> = [
+      { cipher: 'BF_CBC_STRIPE', format: 'MP3_128' },
+    ];
+    const web = userData?.results?.USER?.OPTIONS?.web_sound_quality ?? {};
+    const mobile = userData?.results?.USER?.OPTIONS?.mobile_sound_quality ?? {};
+    if (web?.high || mobile?.high) {
+      formats.unshift({ cipher: 'BF_CBC_STRIPE', format: 'MP3_320' });
+    }
+    if (web?.lossless || mobile?.lossless) {
+      formats.unshift({ cipher: 'BF_CBC_STRIPE', format: 'FLAC' });
+    }
+    return formats;
+  }
+
+  private async fetchGwStreamUrl(
+    licenseToken: string,
+    trackToken: string,
+    formats: Array<{ cipher: string; format: string }>,
+  ): Promise<{ url: string; format: string; size?: number } | null> {
+    try {
+      const payload = {
+        license_token: licenseToken,
+        media: [
+          {
+            type: 'FULL',
+            formats,
+          },
+        ],
+        track_tokens: [trackToken],
+      };
+      const res = await fetch('https://media.deezer.com/v1/get_url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': this.buildHeaders({} as StreamingServiceConfig)['User-Agent'],
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await safeReadText(res, '', {
+          onError: 'debug',
+          log: this.log,
+          label: 'deezer song data read failed',
+          context: { status: res.status },
+        });
+        this.log.warn('deezer gw get_url failed', { status: res.status, body: body.slice(0, 200) });
+        return null;
+      }
+      const data = (await res.json()) as Record<string, any>;
+      if (hasGwError(data?.data?.[0]?.errors)) {
+        this.log.warn('deezer gw get_url error', { error: data.data[0].errors });
+      }
+      const media = data?.data?.[0]?.media?.[0];
+      const source = media?.sources?.[0];
+      if (source?.url && media?.format) {
+        return { url: source.url, format: media.format, size: media.filesize };
+      }
+      return null;
+    } catch (err) {
+      this.log.debug('deezer gw get_url failed', { message: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
+  }
+
+  private async fetchTrackPage(trackId: string, bridge: StreamingServiceConfig): Promise<string | null> {
+    try {
+      const url = `${DEEZER_TRACK_URL}/${encodeURIComponent(trackId)}`;
+      const res = await fetch(url, {
+        headers: this.buildHeaders(bridge),
+      });
+      if (!res.ok) {
+        this.log.warn('deezer track page request failed', { status: res.status, trackId });
+        return null;
+      }
+      return await res.text();
+    } catch (err) {
+      this.log.warn('deezer track page request failed', { trackId, message: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
+  }
+
+  private async fetchTrackApi(trackId: string): Promise<DeezerSongData | null> {
+    try {
+      const res = await fetch(`${DEEZER_API_BASE}/track/${encodeURIComponent(trackId)}`);
+      if (!res.ok) return null;
+      const data = (await res.json()) as Record<string, any>;
+      return data as DeezerSongData;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractSongData(html: string): DeezerSongData | null {
+    const marker = html.indexOf('{"DATA":');
+    if (marker < 0) return null;
+    const raw = html.slice(marker);
+    const json = extractJsonObject(raw);
+    if (!json) return null;
+    try {
+      const data = JSON.parse(json) as { DATA?: DeezerSongData };
+      return data?.DATA ?? null;
+    } catch (err) {
+      this.log.warn('deezer track page parse failed', { message: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
+  }
+
+  /**
+   * Route served on the shared HTTP gateway (:7090) instead of a per-service
+   * ephemeral server. Streams Blowfish-decrypted audio for ffmpeg to pull.
+   */
+  public getProxyRoute(): StreamProxyRoute {
+    return {
+      matches: (pathname) => pathname.startsWith('/deezer/'),
+      handle: (req, res) => this.handleProxyRequest(req, res),
+    };
+  }
+
+  private async handleProxyRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = String(req.url || '');
+    const match = url.match(/^\/deezer\/([^/]+)\/stream/i);
+    if (!match) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    const sessionId = match[1] ?? '';
+    const session = this.proxySessions.get(sessionId);
+    if (!session) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+
+    const controller = new AbortController();
+    const cleanup = () => {
+      controller.abort();
+      this.proxySessions.delete(sessionId);
+    };
+    req.on('close', cleanup);
+
+    const contentType = formatContentType(session.format);
+    const responseHeaders: Record<string, string> = { 'Content-Type': contentType };
+    res.writeHead(200, responseHeaders);
+    const decryptStream = new DeezerDecryptStream(session.blowfishKey);
+    const jitterBuffer = new DeezerJitterBuffer(DEEZER_JITTER_BUFFER_BYTES);
+    const stream = createRetryStream(session, controller.signal, this.log);
+    stream.pipe(decryptStream).pipe(jitterBuffer).pipe(res);
+
+    stream.on('error', (err: Error) => {
+      // The headers went out long ago, so breaking the socket is the only way left to tell
+      // ffmpeg this was not the end of the track. Ending the response would read as a clean
+      // EOF and truncate the track silently.
+      this.log.warn('deezer proxy stream failed', { sessionId, message: err.message });
+      cleanup();
+      res.destroy(err);
+    });
+    res.on('close', cleanup);
+  }
+}
+
+function extractCookiesFromResponse(response: Response, arl: string): string {
+  const headerAny = response.headers as Headers & { getSetCookie?: () => string[] };
+  const cookieParts: string[] = [];
+  const arlValue = arl.trim();
+  if (arlValue) {
+    cookieParts.push(`arl=${arlValue}`);
+  }
+  if (typeof headerAny.getSetCookie === 'function') {
+    const rawCookies = headerAny.getSetCookie() as string[];
+    for (const raw of rawCookies) {
+      const part = raw.split(';')[0]?.trim();
+      if (part) cookieParts.push(part);
+    }
+  } else {
+    const raw = response.headers.get('set-cookie');
+    if (raw) {
+      const splits = raw.split(/,(?=[^;]+?=)/g);
+      for (const entry of splits) {
+        const part = entry.split(';')[0]?.trim();
+        if (part) cookieParts.push(part);
+      }
+    }
+  }
+  return cookieParts.filter(Boolean).join('; ');
+}
+
+function hasGwError(error: any): boolean {
+  if (!error) return false;
+  if (Array.isArray(error)) return error.length > 0;
+  if (typeof error === 'object') return Object.keys(error).length > 0;
+  return true;
+}
+
+function extractJsonObject(raw: string): string | null {
+  const start = raw.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return raw.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function md5hex(data: Buffer): Buffer {
+  const hex = createHash('md5').update(data).digest('hex');
+  return Buffer.from(hex, 'utf8');
+}
+
+function hexaescrypt(data: Buffer, key: string): string {
+  const cipher = createCipheriv('aes-128-ecb', Buffer.from(key, 'utf8'), null);
+  cipher.setAutoPadding(false);
+  const enc = Buffer.concat([cipher.update(data), cipher.final()]);
+  return enc.toString('hex');
+}
+
+function calcBlowfishKey(songId: string): Buffer {
+  const songMd5 = md5hex(Buffer.from(songId, 'utf8'));
+  const out = Buffer.alloc(16);
+  for (let i = 0; i < 16; i += 1) {
+    // 32-byte md5hex buffer; DEEZER_BF_KEY length matches loop bound
+    out[i] = songMd5[i]! ^ songMd5[i + 16]! ^ DEEZER_BF_KEY[i]!;
+  }
+  return out;
+}
+
+
+function genUrlKey(songId: string, md5Origin: string, mediaVersion: string, format: number): string {
+  const parts = [
+    Buffer.from(md5Origin, 'utf8'),
+    Buffer.from(String(format), 'utf8'),
+    Buffer.from(String(songId), 'utf8'),
+    Buffer.from(String(mediaVersion), 'utf8'),
+  ];
+  const separator = Buffer.from([0xa4]);
+  const dataConcat = Buffer.concat(parts.map((part, idx) => (idx === 0 ? part : Buffer.concat([separator, part]))));
+  const digest = md5hex(dataConcat);
+  let data = Buffer.concat([digest, separator, dataConcat, separator]);
+  if (data.length % 16 !== 0) {
+    const pad = Buffer.alloc(16 - (data.length % 16), 0);
+    data = Buffer.concat([data, pad]);
+  }
+  return hexaescrypt(data, DEEZER_AES_KEY);
+}
+
+function buildStreamUrl(
+  base: string,
+  songId: string,
+  cdnPrefix: string,
+  md5Origin: string,
+  mediaVersion: string,
+  format: number,
+): string {
+  const key = genUrlKey(songId, md5Origin, mediaVersion, format);
+  return `${base}${cdnPrefix}.dzcdn.net/mobile/1/${key}`;
+}
+
+function buildStreamUrls(
+  songId: string,
+  md5Origin: string,
+  mediaVersion: string,
+  formats: number[],
+): string[] {
+  const primaryPrefix = (md5Origin[0] || 'a').toLowerCase();
+  const prefixes = primaryPrefix && !DEEZER_CDN_PREFIXES.includes(primaryPrefix)
+    ? [primaryPrefix, ...DEEZER_CDN_PREFIXES]
+    : [primaryPrefix, ...DEEZER_CDN_PREFIXES.filter((p) => p !== primaryPrefix)];
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const fmt of formats) {
+    for (const prefix of prefixes) {
+      for (const base of DEEZER_CDN_BASES) {
+        const url = buildStreamUrl(base, songId, prefix, md5Origin, mediaVersion, fmt);
+        if (seen.has(url)) continue;
+        seen.add(url);
+        urls.push(url);
+      }
+    }
+  }
+  return urls;
+}
+
+function resolveFormatCandidates(song: DeezerSongData): number[] {
+  const entries = [
+    { format: 9, size: song.FILESIZE_FLAC },
+    { format: 3, size: song.FILESIZE_MP3_320 },
+    { format: 1, size: song.FILESIZE_MP3_128 },
+  ];
+  const resolved = entries.filter((entry) => Number(entry.size) > 0).map((entry) => entry.format);
+  return resolved.length ? resolved : [3, 1];
+}
+
+function mapGwFormatToId(format?: string): number | undefined {
+  switch ((format || '').toUpperCase()) {
+    case 'FLAC':
+      return 9;
+    case 'MP3_320':
+      return 3;
+    case 'MP3_128':
+      return 1;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Streams one proxy session's bytes into a PassThrough, resuming with a Range request
+ * whenever the upstream body breaks off before the file is whole.
+ *
+ * Two rules carry this function, and #328 is what happened without them:
+ *
+ * - An interrupted body is not a finished one. `out.end()` promises the consumer that
+ *   those were all the bytes there are; ffmpeg believes it, exits 0 on half a track and
+ *   the zone falls silent with nothing that reads as a failure anywhere. Only a body that
+ *   ends on its own terms may end the stream, and only after the resume machinery has had
+ *   its turn.
+ * - The stall timer measures upstream silence, never our own backpressure. A paced output
+ *   — sendspin behind a session buffer worth about a second — parks the writer on `drain`
+ *   for seconds at a time, and a healthy CDN connection used to be aborted for it. The
+ *   clock runs only while we are waiting for a chunk.
+ */
+/** @internal exported for tests */
+export function createRetryStream(
+  session: DeezerProxySession,
+  signal: AbortSignal,
+  log: ReturnType<typeof createLogger>,
+  stallTimeoutMs: number = DEEZER_STALL_TIMEOUT_MS,
+): PassThrough {
+  const out = new PassThrough();
+  // Deezer's own filesize for the chosen format. Advisory: it is how we notice a short
+  // close, never grounds to fail a stream that delivered everything the CDN has.
+  const totalSize = Number(session.estimatedSize) > 0 ? Number(session.estimatedSize) : null;
+  let offset = 0;
+  let buffer = Buffer.alloc(0);
+  let pumping = false;
+
+  const delivered = (): number => offset + buffer.length;
+
+  const flushAndEnd = (): void => {
+    if (buffer.length > 0) {
+      offset += buffer.length;
+      out.write(buffer);
+      buffer = Buffer.alloc(0);
+    }
+    out.end();
+  };
+
+  const pump = async (): Promise<void> => {
+    if (pumping) return;
+    pumping = true;
+    let attempts = 0;
+    let attemptsWithoutProgress = 0;
+    const maxAttemptsWithoutProgress = Math.max(3, session.urls.length * 2);
+
+    while (!signal.aborted && !out.destroyed) {
+      if (attempts >= DEEZER_MAX_STREAM_ATTEMPTS) {
+        out.destroy(new Error(`deezer retry limit reached at ${delivered()} bytes`));
+        pumping = false;
+        return;
+      }
+      const url = session.urls[attempts % session.urls.length] ?? '';
+      attempts += 1;
+      const resumeOffset = delivered();
+      // 'ended' = upstream closed by itself, 'broke' = aborted or errored mid-body,
+      // 'unusable' = never got a body to read.
+      let outcome: 'ended' | 'broke' | 'unusable' = 'unusable';
+      const requestController = new AbortController();
+      const onAbort = (): void => requestController.abort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      let idleTimer: NodeJS.Timeout | null = null;
+      const stopIdleTimer = (): void => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = null;
+      };
+      const armIdleTimer = (): void => {
+        stopIdleTimer();
+        idleTimer = setTimeout(() => requestController.abort(), stallTimeoutMs);
+      };
+      try {
+        const headers: Record<string, string> = { ...session.headers };
+        if (resumeOffset > 0) {
+          headers.Range = `bytes=${resumeOffset}-`;
+        }
+        const res = await fetch(url, { headers, signal: requestController.signal });
+        if (!res.ok || !res.body) {
+          log.debug('deezer proxy fetch rejected', { status: res.status, resumeOffset });
+        } else if (resumeOffset > 0 && res.status !== 206) {
+          // A 200 to a Range request would replay the file from the top and splice the
+          // start of the track into the middle of it.
+          log.debug('deezer proxy resume not honoured', { status: res.status, resumeOffset });
+        } else {
+          const body = Readable.fromWeb(res.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+          outcome = 'broke';
+          armIdleTimer();
+          for await (const chunk of body) {
+            stopIdleTimer();
+            if (signal.aborted || out.destroyed) break;
+            buffer = Buffer.concat([buffer, Buffer.from(chunk as Buffer)]);
+            while (buffer.length >= BLOCK_SIZE) {
+              const block = buffer.subarray(0, BLOCK_SIZE);
+              buffer = buffer.subarray(BLOCK_SIZE);
+              offset += block.length;
+              if (!out.write(block)) {
+                // Our consumer's pace, not a stalled download — and the wait must not
+                // outlive the request, or a disconnected client leaks this pump.
+                await once(out, 'drain', { signal });
+              }
+            }
+            armIdleTimer();
+          }
+          if (!signal.aborted && !out.destroyed) {
+            outcome = 'ended';
+          }
+        }
+      } catch (err) {
+        log.debug('deezer proxy stream interrupted', {
+          message: err instanceof Error ? err.message : String(err),
+          resumeOffset,
+          delivered: delivered(),
+        });
+      } finally {
+        stopIdleTimer();
+        signal.removeEventListener('abort', onAbort);
+        // Frees the socket when we left the body early; a consumed body ignores it.
+        requestController.abort();
+      }
+
+      if (signal.aborted || out.destroyed) {
+        pumping = false;
+        return;
+      }
+      const madeProgress = delivered() > resumeOffset;
+      if (outcome === 'ended') {
+        if (totalSize === null || delivered() >= totalSize) {
+          flushAndEnd();
+          pumping = false;
+          return;
+        }
+        if (!madeProgress) {
+          // Twice now upstream has closed at the same byte. The filesize is advisory, so
+          // trust the bytes over it rather than fail a track that is probably whole.
+          log.debug('deezer proxy ended short of the advertised size', {
+            delivered: delivered(),
+            totalSize,
+          });
+          flushAndEnd();
+          pumping = false;
+          return;
+        }
+        log.debug('deezer proxy closed early; resuming', {
+          resumeOffset: delivered(),
+          totalSize,
+        });
+        continue;
+      }
+      attemptsWithoutProgress = madeProgress ? 0 : attemptsWithoutProgress + 1;
+      if (attemptsWithoutProgress > maxAttemptsWithoutProgress) {
+        out.destroy(
+          new Error(
+            delivered() === 0
+              ? 'deezer proxy upstream failed'
+              : `deezer proxy stream broke off at ${delivered()} bytes`,
+          ),
+        );
+        pumping = false;
+        return;
+      }
+      log.debug('deezer proxy resuming stream', {
+        attempt: attempts,
+        outcome,
+        resumeOffset: delivered(),
+        totalSize,
+      });
+    }
+    pumping = false;
+  };
+
+  pump().catch((err) => out.destroy(err));
+  return out;
+}

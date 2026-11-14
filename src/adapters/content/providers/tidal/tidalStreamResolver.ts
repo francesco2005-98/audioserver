@@ -1,0 +1,33 @@
+import type { StreamProvider } from '@/adapters/content/StreamProvider';
+import { createLogger } from '@/shared/logging/logger';
+import type { PlaybackSource } from '@/ports/EngineTypes';
+import type { TidalStreamService } from '@/adapters/content/providers/tidal/tidalStreamService';
+
+export class TidalStreamResolver implements StreamProvider {
+  public readonly provider = 'tidal';
+
+  private readonly log = createLogger('Audio', 'TidalStream');
+
+  constructor(private readonly streamService: TidalStreamService) {}
+
+  public configure(): void {
+    try {
+      this.streamService.configureFromConfig();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log.warn('tidal stream config failed', { message });
+    }
+  }
+
+  public isProvider(providerId: string): boolean {
+    return this.streamService.isTidalProvider(providerId);
+  }
+
+  public async startStreamForAudiopath(
+    zoneId: number | undefined,
+    audiopath: string,
+    options?: { suppressErrors?: boolean },
+  ): Promise<{ playbackSource: PlaybackSource | null; outputOnly?: boolean }> {
+    return this.streamService.startStreamForAudiopath(zoneId, audiopath, options);
+  }
+}
