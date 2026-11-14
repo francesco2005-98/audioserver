@@ -216,6 +216,16 @@ async function handleSpotifyAccountLink(
   }
 }
 
+function mergeDefined<T extends object>(base: T, patch: T): T {
+  const next = { ...base };
+  for (const [key, value] of Object.entries(patch) as Array<[keyof T, T[keyof T]]>) {
+    if (value !== undefined) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 async function handleStreamingServiceCreate(
   req: IncomingMessage,
   res: ServerResponse,
@@ -457,8 +467,13 @@ async function handleStreamingServiceCreate(
       const idx = bridges.findIndex(
         (b) => typeof b?.id === 'string' && b.id.trim().toLowerCase() === bridge.id.toLowerCase(),
       );
-      if (idx >= 0) {
-        const cleaned = { ...bridges[idx], ...bridge } as StreamingServiceConfig & { storefront?: string };
+      const existing = idx >= 0 ? bridges[idx] : undefined;
+      if (existing) {
+        // Keys the form left out are undefined. Spreading those over the stored
+        // account deletes the token, because JSON drops undefined keys on save.
+        const cleaned = mergeDefined(existing, bridge) as StreamingServiceConfig & {
+          storefront?: string;
+        };
         delete cleaned.storefront;
         bridges[idx] = cleaned;
       } else {
