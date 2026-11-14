@@ -137,6 +137,15 @@ export type CredentialLoginCallback = (
   creds: { username: string; credentials: string },
 ) => Promise<void>;
 
+/** Public Spotify user id (`/me`.id), not the stable account_id stored as `account.id`. */
+export function spotifyPublicUserId(account: {
+  id?: string;
+  spotifyId?: string;
+  user?: string;
+}): string {
+  return account.spotifyId?.trim() || account.user?.trim() || account.id?.trim() || '';
+}
+
 export interface SpotifyAccountProviderOptions {
   providerId: string;
   account: SpotifyAccountState;
@@ -194,6 +203,15 @@ export class SpotifyAccountProvider implements ContentProvider {
 
   public get accountId(): string {
     return this.account.id;
+  }
+
+  /**
+   * The id Spotify's follow and playlist-owner calls expect.
+   * `account.id` is the stable account_id; playlist owners and
+   * `/followers/contains` speak the public user id (`/me`.id).
+   */
+  public get spotifyUserId(): string {
+    return spotifyPublicUserId(this.account);
   }
 
   public get displayLabel(): string {
@@ -328,7 +346,7 @@ export class SpotifyAccountProvider implements ContentProvider {
         return this.buildFolder(
           folderId,
           'Artists',
-          await this.fetchUserArtists(limit || 20),
+          await this.fetchUserArtists(offset, limit || 20),
           offset,
         );
       case 'liked':
@@ -854,23 +872,65 @@ export class SpotifyAccountProvider implements ContentProvider {
   }
 
   private async fetchUserArtists(
+    offset: number,
     limit: number,
   ): Promise<{ items: ContentFolderItem[]; total?: number }> {
-    const cappedLimit = Math.min(Math.max(limit || 20, 1), 50);
-    const data = await this.request<{ artists?: { items?: any[]; total?: number } }>(
-      `${SPOTIFY_API_BASE}/me/following?type=artist&limit=${cappedLimit}`,
-    );
-    const items = Array.isArray(data?.artists?.items) ? data!.artists!.items : [];
-    if (items.length) {
-      const mapped = items.map((artist) => this.mapArtist(artist));
-      return { items: mapped, total: data?.artists?.total ?? mapped.length };
+    const safeOffset = Math.max(0, offset || 0);
+    const safeLimit = Math.max(1, limit || 20);
+    const collected: any[] = [];
+    let seen = 0;
+    let after = '';
+    let total: number | undefined;
+
+    // `/me/following` is cursor-paged, not offset-paged. Asking again with a
+    // higher offset used to return the same first page.
+    for (let page = 0; page < 20 && collected.length < safeLimit; page += 1) {
+      const pageLimit = Math.min(50, safeOffset + safeLimit - seen);
+      const params = new URLSearchParams({
+        type: 'artist',
+        limit: String(Math.max(1, pageLimit)),
+      });
+      if (after) {
+        params.set('after', after);
+      }
+      const data = await this.request<{
+        artists?: { items?: any[]; total?: number; next?: string | null; cursors?: { after?: string } };
+      }>(`${SPOTIFY_API_BASE}/me/following?${params.toString()}`);
+      const artists = data?.artists;
+      const items = Array.isArray(artists?.items) ? artists.items : [];
+      if (typeof artists?.total === 'number') {
+        total = artists.total;
+      }
+      if (!items.length) {
+        break;
+      }
+      for (const item of items) {
+        if (seen >= safeOffset && collected.length < safeLimit) {
+          collected.push(item);
+        }
+        seen += 1;
+      }
+      const nextAfter = artists?.cursors?.after?.trim() ?? '';
+      if (!artists?.next || !nextAfter) {
+        break;
+      }
+      after = nextAfter;
     }
 
-    // Dev-mode/scope fallback: derive artists from saved albums.
+    if (collected.length) {
+      const mapped = collected.map((artist) => this.mapArtist(artist));
+      return { items: mapped, total: total ?? mapped.length };
+    }
+
+    // Dev-mode/scope fallback: derive artists from saved albums. Only the first
+    // page — a later empty cursor page is the end of the list, not a missing scope.
+    if (safeOffset > 0) {
+      return { items: [], total: total ?? 0 };
+    }
     const albumData = await this.request<{ items?: any[]; total?: number }>(
       `${SPOTIFY_API_BASE}/me/albums`,
       {
-        params: { offset: '0', limit: String(cappedLimit) },
+        params: { offset: '0', limit: String(Math.min(safeLimit, 50)) },
         suppressWarn: true,
       },
     );
@@ -879,7 +939,7 @@ export class SpotifyAccountProvider implements ContentProvider {
       .map((entry) => entry?.album?.artists)
       .flat()
       .filter(Boolean);
-    const uniqueArtists = this.dedupeById(albumArtists).slice(0, cappedLimit);
+    const uniqueArtists = this.dedupeById(albumArtists).slice(0, safeLimit);
     if (uniqueArtists.length) {
       this.log.debug('spotify artists fallback to saved albums', {
         count: uniqueArtists.length,
@@ -1458,11 +1518,12 @@ export class SpotifyAccountProvider implements ContentProvider {
     });
 
     if (!response.ok) {
-      // Retry once on token expiry. A 403 is often a policy/mode restriction.
+      // A 401 means Spotify has rejected the bearer we still consider unexpired.
+      // Asking for it again without forgetting it returned the same token and
+      // the call was never retried.
       if (response.status === 401) {
-        this.authError = true;
-        const retryToken = await this.getAccessToken();
-        if (retryToken && retryToken !== token) {
+        const retryToken = await this.fetchAccessToken(true);
+        if (retryToken) {
           const retryResponse = await this.rawRequest<T>(apiUrl.toString(), {
             method: options?.method ?? 'GET',
             headers: {
@@ -1476,6 +1537,7 @@ export class SpotifyAccountProvider implements ContentProvider {
             return retryResponse.body;
           }
         }
+        this.authError = true;
       }
       const logFn = options?.suppressWarn ? this.log.debug.bind(this.log) : this.log.warn.bind(this.log);
       logFn('spotify api request failed', {
@@ -1581,8 +1643,66 @@ export class SpotifyAccountProvider implements ContentProvider {
   }
 
   /**
-   * Public accessor for callers that need a Spotify access token (e.g. outputs).
+   * One authenticated Spotify call, refreshed once when the bearer is rejected.
+   * Follow, save and search sit outside {@link request} and were dropping the 401.
    */
+  public async authorizedRequest(
+    url: string,
+    init: { method?: 'GET' | 'PUT' | 'DELETE' | 'POST'; body?: unknown } = {},
+  ): Promise<{ ok: boolean; status: number; body: unknown }> {
+    const send = async (token: string): Promise<{ ok: boolean; status: number; body: unknown }> => {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      };
+      const request: RequestInit = { method: init.method ?? 'GET', headers };
+      if (init.body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+        request.body = JSON.stringify(init.body);
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), SPOTIFY_HTTP_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { ...request, signal: controller.signal });
+        const text = await res.text();
+        let body: unknown = null;
+        if (text) {
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = text;
+          }
+        }
+        return { ok: res.ok, status: res.status, body };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log.warn('spotify api error', { url, message });
+        return { ok: false, status: 0, body: null };
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    const token = await this.getAccessToken();
+    if (!token) {
+      this.authError = true;
+      return { ok: false, status: 0, body: null };
+    }
+    let result = await send(token);
+    if (result.status === 401) {
+      const refreshed = await this.fetchAccessToken(true);
+      if (refreshed) {
+        result = await send(refreshed);
+      }
+    }
+    if (result.ok) {
+      this.authError = false;
+    } else if (result.status === 401) {
+      this.authError = true;
+    }
+    return result;
+  }
+
   public async fetchAccessToken(forceRefresh = false): Promise<string | null> {
     if (forceRefresh) {
       this.accessToken = '';

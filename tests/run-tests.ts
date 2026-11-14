@@ -97,6 +97,7 @@ import './ytmusicNative.mock.test';
 import './spotifyAccountProvider.playlists.test';
 import './spotifyAccountProvider.artist.test';
 import './spotifyWebTokens.test';
+import './spotifyApi.test';
 import './soloistBackend.test';
 import './soloistArchive.test';
 import './soloistStores.test';
