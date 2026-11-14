@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from './testHarness';
 import { SqueezeliteOutput } from '../src/adapters/outputs/squeezelite/squeezeliteOutput';
-import { EventType, PlayerState } from '@sonn-audio/node-slimproto';
+import { EventType, PlayerState } from '@audioserver/node-slimproto';
 import type { OutputPorts } from '../src/adapters/outputs/outputPorts';
 import type { PlaybackSession } from '../src/ports/types/playback';
 

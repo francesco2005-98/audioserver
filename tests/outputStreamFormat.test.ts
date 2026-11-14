@@ -11,7 +11,7 @@ import { DlnaOutput } from '../src/adapters/outputs/dlna/dlnaOutput';
 import { SonosOutput } from '../src/adapters/outputs/sonos/sonosOutput';
 import type { ConfigPort } from '../src/ports/ConfigPort';
 import { makeOutputPortsFake } from './fakes/outputPorts';
-import { parseSinkContentTypes } from '@sonn-audio/node-upnp';
+import { parseSinkContentTypes } from '@audioserver/node-upnp';
 
 test('an unknown endpoint gets MP3, because silence is worse than a re-encode', () => {
   assert.equal(chooseStreamProfile({ preference: 'auto', losslessSupported: null }), 'mp3');

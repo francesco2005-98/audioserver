@@ -8,7 +8,7 @@ import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { FavoritesManager } from '@/application/zones/favorites/favoritesManager';
 import type { RecentsManager } from '@/application/zones/recents/recentsManager';
 import { audioResampler } from '@/ports/types/audioFormat';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
 import type { Route } from '@/adapters/http/adminApi/routeTypes';
 import { getZoneOutputConfig } from '@/adapters/http/adminApi/config/configHandlers';
 import { parseOutputDelayMs, setOutputDelayMs } from '@/adapters/http/outputDelay';

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
 import { test } from './testHarness';
 import { SendspinClientSender } from '../src/adapters/outputs/sendspin/sendspinClientSender';
 

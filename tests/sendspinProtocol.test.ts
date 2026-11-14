@@ -5,7 +5,7 @@ import {
   Roles,
   SendspinSession,
   serverNowUs,
-} from '@sonn-audio/node-sendspin';
+} from '@audioserver/node-sendspin';
 
 /**
  * Wire-level checks on SendspinSession, against the reference implementation

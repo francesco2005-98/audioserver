@@ -37,7 +37,7 @@ import {
 } from '@/shared/bundleRelease';
 import { createUpdateChecker } from '@/adapters/http/adminApi/misc/updateCheck';
 
-const ADDON_PACKAGE_PREFIX = '@sonn-audio/node-';
+const ADDON_PACKAGE_PREFIX = '@audioserver/node-';
 
 function ttlFromEnv(name: string, fallbackMs: number): number {
   const raw = Number.parseInt(process.env[name] ?? '', 10);

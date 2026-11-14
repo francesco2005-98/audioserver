@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Roles, sendspinCore, type SendspinSession, type SendspinSessionHooks } from '@sonn-audio/node-sendspin';
+import { Roles, sendspinCore, type SendspinSession, type SendspinSessionHooks } from '@audioserver/node-sendspin';
 import { test } from './testHarness';
 import { buildZoneOutputs } from '../src/adapters/outputs/factory';
 import type { ZoneConfig } from '../src/domain/config/types';

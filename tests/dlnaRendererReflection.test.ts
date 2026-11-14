@@ -11,7 +11,7 @@ import type { ZoneState } from '../src/domain/zones/zoneState';
 import type { ZoneConfig } from '../src/domain/config/types';
 import type { ConfigPort } from '../src/ports/ConfigPort';
 import type { AirplayController } from '../src/ports/InputsPort';
-import type { SsdpAdvertiser } from '@sonn-audio/node-upnp';
+import type { SsdpAdvertiser } from '@audioserver/node-upnp';
 
 // Every zone with the DLNA input on is a UPnP renderer, and a control point
 // (Home Assistant's dlna_dmr, a TV) is told what that renderer is doing over

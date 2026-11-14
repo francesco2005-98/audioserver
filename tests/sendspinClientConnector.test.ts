@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
 import { test } from './testHarness';
 import {
   describeDrop,

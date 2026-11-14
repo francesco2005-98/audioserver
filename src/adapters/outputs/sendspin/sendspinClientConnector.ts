@@ -2,8 +2,8 @@ import type { IncomingMessage } from 'node:http';
 import WebSocket from 'ws';
 import type { RawData } from 'ws';
 import { createLogger } from '@/shared/logging/logger';
-import { ConnectionReason, sendspinCore, TERMINAL_GOODBYE_REASONS } from '@sonn-audio/node-sendspin';
-import type { SendspinPairingRequiredReason } from '@sonn-audio/node-sendspin';
+import { ConnectionReason, sendspinCore, TERMINAL_GOODBYE_REASONS } from '@audioserver/node-sendspin';
+import type { SendspinPairingRequiredReason } from '@audioserver/node-sendspin';
 import type { MdnsBrowser, MdnsPort, MdnsRegistration, MdnsServiceRecord } from '@/ports/MdnsPort';
 
 interface Endpoint {

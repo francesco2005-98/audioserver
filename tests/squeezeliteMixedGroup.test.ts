@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from './testHarness';
-import { EventType, PlayerState } from '@sonn-audio/node-slimproto';
+import { EventType, PlayerState } from '@audioserver/node-slimproto';
 import { createSqueezeliteGroupController } from '../src/application/outputs/squeezeliteGroupController';
 import { getGroupByZone, removeGroupByLeader, upsertGroup } from '../src/application/groups/groupTracker';
 import { SqueezeliteOutput } from '../src/adapters/outputs/squeezelite/squeezeliteOutput';

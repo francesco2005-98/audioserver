@@ -12,7 +12,7 @@
  */
 import 'tsconfig-paths/register';
 import { PassThrough } from 'node:stream';
-import { AirPlayReceiver, type ReceiverEvent } from '@sonn-audio/node-airplay';
+import { AirPlayReceiver, type ReceiverEvent } from '@audioserver/node-airplay';
 import { AirplayLaneSender } from '@/adapters/outputs/airplay/laneSender';
 
 const SECONDS = 3;

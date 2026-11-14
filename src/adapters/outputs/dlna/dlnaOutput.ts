@@ -16,7 +16,7 @@ import {
   DlnaControlPoint,
   type DlnaTransportEvent,
   type DlnaRenderingEvent,
-} from '@sonn-audio/node-upnp';
+} from '@audioserver/node-upnp';
 
 /**
  * Sink MIME types that mean "this renderer can take our FLAC". `audio/x-flac` is the older spelling and

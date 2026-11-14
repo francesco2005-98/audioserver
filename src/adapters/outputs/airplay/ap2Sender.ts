@@ -11,8 +11,8 @@ import {
   setupRealtimeStream,
   FRAMES_PER_PACKET,
   type SenderIdentity,
-} from '@sonn-audio/node-airplay';
-import { ntpNow } from '@sonn-audio/node-airplay';
+} from '@audioserver/node-airplay';
+import { ntpNow } from '@audioserver/node-airplay';
 import { createLogger } from '@/shared/logging/logger';
 import { collapseRepeats } from '@/shared/logging/collapseRepeats';
 import type { AirplaySender } from '@/adapters/outputs/airplay/airplaySender';

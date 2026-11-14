@@ -6,7 +6,7 @@ import type { ContentPort } from '@/ports/ContentPort';
 import type { EnginePort } from '@/ports/EnginePort';
 import { buildBaseUrl } from '@/shared/streamUrl';
 import { resolveCoverHost } from '@/shared/utils/net';
-import { SsdpAdvertiser, UpnpMediaServer, MEDIA_SERVER_PATHS } from '@sonn-audio/node-upnp';
+import { SsdpAdvertiser, UpnpMediaServer, MEDIA_SERVER_PATHS } from '@audioserver/node-upnp';
 import {
   MediaContentProvider,
   type ServiceDef,

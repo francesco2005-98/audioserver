@@ -21,7 +21,7 @@ import {
   generatePsk,
   b64urlEncode,
   b64urlDecode,
-} from '@sonn-audio/node-sendspin';
+} from '@audioserver/node-sendspin';
 
 /**
  * Noise KKpsk2 checks. The wire itself is pinned by the interop harness against

@@ -1,4 +1,4 @@
-import type { BaseController } from '@sonn-audio/node-googlecast';
+import type { BaseController } from '@audioserver/node-googlecast';
 import { loadGoogleCastModule } from '@/adapters/outputs/googleCast/googlecastLoader';
 
 export type JsonNamespaceController = BaseController<{ message: (payload: Record<string, unknown>) => void }> & {

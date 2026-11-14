@@ -13,7 +13,7 @@ import {
   type StreamProfileChoice,
 } from '@/domain/outputs/streamProfilePolicy';
 import type { OutputPorts } from '@/adapters/outputs/outputPorts';
-import type { CastDevice, DiscoveredDevice, MediaStatusModel } from '@sonn-audio/node-googlecast';
+import type { CastDevice, DiscoveredDevice, MediaStatusModel } from '@audioserver/node-googlecast';
 import { loadGoogleCastModule } from '@/adapters/outputs/googleCast/googlecastLoader';
 
 const DEFAULT_MEDIA_RECEIVER_APP_ID = 'CC1AD845';

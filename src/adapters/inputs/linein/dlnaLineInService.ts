@@ -13,7 +13,7 @@ import {
   UpnpMediaRenderer,
   RENDERER_PATHS,
   type RendererHandler,
-} from '@sonn-audio/node-upnp';
+} from '@audioserver/node-upnp';
 
 /**
  * What every DLNA line-in is decoded to. Fixed rather than following the cast: the

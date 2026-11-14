@@ -3,8 +3,8 @@ import type { ContentManager } from '@/adapters/content/contentManager';
 import type { ContentFolder, ContentFolderItem, ContentItemMetadata } from '@/ports/ContentTypes';
 import { resolveItemKind, type ContentItemKind } from '@/domain/media/contentKind';
 import { audioOutputSettings, mp3BitrateToBps } from '@/ports/types/audioFormat';
-import type { ContentProvider, BrowseResult, DidlContainer, DidlItem } from '@sonn-audio/node-upnp';
-import { ROOT_OBJECT_ID, parseSearchCriteria } from '@sonn-audio/node-upnp';
+import type { ContentProvider, BrowseResult, DidlContainer, DidlItem } from '@audioserver/node-upnp';
+import { ROOT_OBJECT_ID, parseSearchCriteria } from '@audioserver/node-upnp';
 import {
   decodeObjectId,
   encodeContainerId,

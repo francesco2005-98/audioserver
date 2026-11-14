@@ -11,8 +11,8 @@ import {
   acquireMaApiForBridge,
   findMusicAssistantBridge,
 } from '@/shared/musicassistant/maBridgeResolver';
-import { sendspinCore } from '@sonn-audio/node-sendspin';
-import type { SendspinPairingRequiredReason } from '@sonn-audio/node-sendspin';
+import { sendspinCore } from '@audioserver/node-sendspin';
+import type { SendspinPairingRequiredReason } from '@audioserver/node-sendspin';
 import { bluetoothClientId } from '@/domain/inputs/bluetoothIdentity';
 import type { Route } from '@/adapters/http/adminApi/routeTypes';
 

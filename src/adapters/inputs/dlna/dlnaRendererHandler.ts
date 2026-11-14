@@ -4,7 +4,7 @@ import { buildProxyUrl } from '@/shared/urlProxy';
 import type { AirplayController } from '@/ports/InputsPort';
 import type { PlaybackMetadata } from '@/ports/types/playback';
 import type { PlaybackSource } from '@/ports/EngineTypes';
-import type { RendererHandler, ParsedDidlObject } from '@sonn-audio/node-upnp';
+import type { RendererHandler, ParsedDidlObject } from '@audioserver/node-upnp';
 
 /**
  * The app-glue for one zone's DLNA MediaRenderer: it turns the module's neutral

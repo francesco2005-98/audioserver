@@ -1,0 +1,16 @@
+{
+  "name": "@audioserver/node-upnp",
+  "version": "0.4.2",
+  "description": "UPnP AV toolkit: SSDP, SOAP, DIDL-Lite, GENA, plus a MediaRenderer server, a control-point client, and a MediaServer framework. Protocol only \u2014 inject your own content and playback.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/esm/index.js",
+      "default": "./dist/index.js"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { createLogger } from '@/shared/logging/logger';
 import { getGroupByZone } from '@/application/groups/groupTracker';
-import type { SlimClient } from '@sonn-audio/node-slimproto';
-import { PlayerState, TransitionType } from '@sonn-audio/node-slimproto';
+import type { SlimClient } from '@audioserver/node-slimproto';
+import { PlayerState, TransitionType } from '@audioserver/node-slimproto';
 
 export type SqueezeliteGroupParticipant = {
   zoneId: number;

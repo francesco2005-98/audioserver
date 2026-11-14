@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { AirPlayReceiver, type ReceiverEvent } from '@sonn-audio/node-airplay';
+import { AirPlayReceiver, type ReceiverEvent } from '@audioserver/node-airplay';
 import { test } from './testHarness';
 import { RaopSender } from '../src/adapters/outputs/airplay/raopSender';
 
