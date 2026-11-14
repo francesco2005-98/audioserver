@@ -192,8 +192,8 @@ function renderAppleMusicAuthPage(payload: { developerToken: string; appName: st
       .actions { display: flex; gap: 12px; flex-wrap: wrap; }
       button { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; letter-spacing: 1.8px; font-weight: 700; text-transform: uppercase; padding: 10px 22px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #9CA3AF; transition: background .15s, color .15s, border-color .15s; }
       button:hover:not(:disabled) { color: #EDEEF0; border-color: rgba(255,255,255,0.25); }
-      button.primary { background: #4ADE80; color: #062812; border-color: #4ADE80; }
-      button.primary:hover:not(:disabled) { background: #86EFAC; border-color: #86EFAC; }
+      button.primary { background: #F0C14B; color: #1C1404; border-color: #F0C14B; }
+      button.primary:hover:not(:disabled) { background: #F7D578; border-color: #F7D578; }
       button:disabled { opacity: .4; cursor: not-allowed; }
       .status { margin-top: 18px; font-size: 13px; color: #9CA3AF; }
       .status:empty { display: none; }
