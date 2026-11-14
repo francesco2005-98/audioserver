@@ -79,6 +79,43 @@ test('an Amazon Music account without a finished sign-in is refused', async () =
   assert.equal(h.config().content.streamingServices.length, 0);
 });
 
+test('re-saving a Tidal or Deezer account keeps the secret the form did not send', async () => {
+  const h = harness({});
+  h.config().content.streamingServices.push(
+    {
+      id: 'bridge-tidal-1',
+      provider: 'tidal',
+      label: 'Tidal',
+      tidalAccessToken: 'access-token',
+      tidalRefreshToken: 'refresh-token',
+      tidalCountryCode: 'DE',
+    },
+    {
+      id: 'bridge-deezer-1',
+      provider: 'deezer',
+      label: 'Deezer',
+      deezerArl: 'arl-secret',
+    },
+  );
+
+  const tidal = await h.save({
+    provider: 'tidal',
+    id: 'bridge-tidal-1',
+    label: 'Wohnzimmer',
+    tidalQuality: 'LOSSLESS',
+  });
+  assert.equal(tidal.status, 200);
+  const deezer = await h.save({ provider: 'deezer', id: 'bridge-deezer-1', label: 'Küche' });
+  assert.equal(deezer.status, 200);
+
+  const stored = h.config().content.streamingServices;
+  assert.equal(stored.find((entry: StreamingServiceConfig) => entry.id === 'bridge-tidal-1').tidalAccessToken, 'access-token');
+  assert.equal(stored.find((entry: StreamingServiceConfig) => entry.id === 'bridge-tidal-1').tidalRefreshToken, 'refresh-token');
+  assert.equal(stored.find((entry: StreamingServiceConfig) => entry.id === 'bridge-tidal-1').tidalQuality, 'LOSSLESS');
+  assert.equal(stored.find((entry: StreamingServiceConfig) => entry.id === 'bridge-deezer-1').deezerArl, 'arl-secret');
+  assert.equal(stored.find((entry: StreamingServiceConfig) => entry.id === 'bridge-deezer-1').label, 'Küche');
+});
+
 test('re-saving an Amazon Music account under a new name keeps its registration', async () => {
   const h = harness({ login1: CREDENTIALS });
   await h.save({ provider: 'amazonmusic', id: 'bridge-amazonmusic-abc', amazonMusicLoginId: 'login1' });
