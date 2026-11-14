@@ -1,0 +1,559 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ComponentLogger } from '@/shared/logging/logger';
+import type { ConfigPort } from '@/ports/ConfigPort';
+import type { AudioserverClientApiHandler } from '@/adapters/http/audioserverClientApi/audioserverClientApiHandler';
+import type { Route } from '@/adapters/http/adminApi/routeTypes';
+import { CLIENT_COMPONENT } from '@/adapters/http/audioserverClientApi/audioserverClientApiHandler';
+import type {
+  AudioserverClientBeoremoteConfig,
+  AudioserverClientComponentConfig,
+  AudioserverClientDeviceConfig,
+  AudioserverClientPlayerConfig,
+  AudioserverClientSourceConfig,
+} from '@/domain/config/types';
+
+/**
+ * Auth-gated views and edits for devices running Audioserver Client.
+ *
+ * The device-facing half (register, status, desired state) stays under the ungated
+ * `/api/audioserverclients` namespace where a speaker — which has no admin session — can reach it. What is
+ * here is the other direction: the UI reads what registered and writes what it should be.
+ *
+ * Zones are deliberately untouched. A Audioserver client's player is an ordinary Sendspin output, so
+ * assigning a room happens on the Zones screen against a `client_id` this screen created.
+ */
+
+export type AudioserverClientAdminHandlerDeps = {
+  log: ComponentLogger;
+  configPort: ConfigPort;
+  audioserverClientApi: AudioserverClientApiHandler;
+  readJsonBody: (req: IncomingMessage, res: ServerResponse, maxBytes?: number) => Promise<unknown>;
+  sendJson: (res: ServerResponse, status: number, body: unknown) => void;
+};
+
+/** Commands a device will act on itself. Anything else is refused rather than queued forever. */
+/**
+ * What an operator may ask a device to do.
+ *
+ * Deliberately a list rather than a passthrough: these are executed on someone's hardware, and a
+ * device should refuse anything it was not built to be asked.
+ */
+const DEVICE_COMMANDS = new Set([
+  'pair_remote',
+  // Forget one paired remote, by address. Pairing another is a button away; a device that has
+  // collected three from earlier attempts has no way to say so for itself.
+  'forget_remote',
+  // Open the Bluetooth pairing window: visible and pairable for as long as the zone's setting says.
+  'bluetooth_discoverable',
+  // Forget one paired phone, by address.
+  'bluetooth_forget',
+  // Hand over the last lines of the device's own log, optionally how many. The device posts them
+  // back; see the logs route below.
+  'send_logs',
+]);
+
+
+/** Where the client's own releases are published, and what each build is called there. */
+const CLIENT_REPO = 'francesco2005-98/audioserver';
+/**
+ * Architecture as a device reports it, to the build published for it.
+ *
+ * Rust says `arm` for both 32-bit ARM builds, so a Raspberry Pi 1 or Zero cannot be told apart from
+ * a Pi 2 here. It gets the armv7 build, which is right for everything from a Pi 2 onwards and wrong
+ * for the two oldest boards — where the device's own rollback puts the previous binary back, which
+ * is exactly the case that guard exists for.
+ */
+const CLIENT_TARGETS: Record<string, string> = {
+  aarch64: 'aarch64-unknown-linux-gnu',
+  arm: 'armv7-unknown-linux-gnueabihf',
+  x86_64: 'x86_64-unknown-linux-gnu',
+};
+
+/**
+ * Build the catalogue entry for a version of the client, reading the hashes from the release.
+ *
+ * One version number instead of four URLs and four hashes typed by hand, because the alternative is
+ * a feature nobody uses: the release publishes a `.sha256` beside every tarball precisely so this
+ * can be assembled rather than transcribed.
+ */
+async function clientComponentFor(version: string): Promise<AudioserverClientComponentConfig> {
+  const clean = version.trim().replace(/^v/, '');
+  if (!/^\d+\.\d+\.\d+$/.test(clean)) {
+    throw new Error('invalid-version');
+  }
+
+  const urls: Record<string, string> = {};
+  const sha256: Record<string, string> = {};
+  for (const [arch, target] of Object.entries(CLIENT_TARGETS)) {
+    const url = `https://github.com/${CLIENT_REPO}/releases/download/v${clean}/audioserver-client-${clean}-${target}.tar.gz`;
+    const response = await fetch(`${url}.sha256`);
+    if (!response.ok) {
+      throw new Error(`no-artifact-for-${arch}`);
+    }
+    // `sha256sum` writes "<hash>  <filename>"; the hash is all we keep.
+    const digest = (await response.text()).trim().split(/\s+/)[0] ?? '';
+    if (!/^[0-9a-f]{64}$/i.test(digest)) {
+      throw new Error(`bad-checksum-for-${arch}`);
+    }
+    urls[arch] = url;
+    sha256[arch] = digest;
+  }
+
+  return { name: CLIENT_COMPONENT, version: clean, urls, sha256 };
+}
+
+export function buildAudioserverClientRoutes(deps: AudioserverClientAdminHandlerDeps): Route[] {
+  return [
+    {
+      method: 'GET',
+      pattern: /^\/audioserverclients$/,
+      handler: (_req, res) => {
+        try {
+          deps.sendJson(res, 200, {
+            devices: deps.audioserverClientApi.listForAdmin(),
+            components: deps.configPort.getConfig().audioserverClients?.components ?? [],
+            pollIntervalMs: deps.configPort.getConfig().audioserverClients?.pollIntervalMs,
+          });
+        } catch (err) {
+          deps.log.warn('audioserver client list failed', { err });
+          deps.sendJson(res, 500, { error: 'audioserverclients-failed' });
+        }
+      },
+    },
+    {
+      // Take on a device that several servers can see. Nothing else here writes a device into the
+      // config, so this is the one place where "this speaker is ours" is decided.
+      method: 'POST',
+      pattern: /^\/audioserverclients\/([^/]+)\/claim$/,
+      handler: async (_req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        const claimed = await deps.audioserverClientApi.claim(deviceId);
+        if (!claimed) {
+          // Either it is already ours or it has never announced itself here; both are answered as
+          // "nothing to do" rather than as a failure, because both are true from the screen's side.
+          deps.sendJson(res, 409, { error: 'not-claimable' });
+          return;
+        }
+        deps.sendJson(res, 200, deps.audioserverClientApi.viewForAdmin(deviceId));
+      },
+    },
+    {
+      // The last log a device handed over. Empty until someone asks for one with `send_logs`: the
+      // device only sends when told, so this answers "nothing yet" rather than waiting.
+      method: 'GET',
+      pattern: /^\/audioserverclients\/([^/]+)\/logs$/,
+      handler: (_req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        if (!deps.audioserverClientApi.isKnown(deviceId)) {
+          deps.sendJson(res, 404, { error: 'device-not-found' });
+          return;
+        }
+        deps.sendJson(res, 200, deps.audioserverClientApi.logsForAdmin(deviceId) ?? { lines: [], receivedAt: null });
+      },
+    },
+    {
+      method: 'GET',
+      pattern: /^\/audioserverclients\/([^/]+)$/,
+      handler: (_req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        if (!deps.audioserverClientApi.isKnown(deviceId)) {
+          deps.sendJson(res, 404, { error: 'device-not-found' });
+          return;
+        }
+        deps.sendJson(res, 200, deps.audioserverClientApi.viewForAdmin(deviceId));
+      },
+    },
+    {
+      method: 'PUT',
+      pattern: /^\/audioserverclients\/([^/]+)$/,
+      handler: async (req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        const body = await deps.readJsonBody(req, res);
+        if (!body || typeof body !== 'object') {
+          deps.sendJson(res, 400, { error: 'invalid-body' });
+          return;
+        }
+
+        let update: Partial<AudioserverClientDeviceConfig>;
+        try {
+          update = sanitizeDevice(body as Record<string, unknown>);
+        } catch (err) {
+          deps.sendJson(res, 400, { error: err instanceof Error ? err.message : 'invalid-body' });
+          return;
+        }
+
+        try {
+          await deps.configPort.updateConfig((config) => {
+            config.audioserverClients = config.audioserverClients ?? {};
+            config.audioserverClients.devices = config.audioserverClients.devices ?? [];
+            const devices = config.audioserverClients.devices;
+            const index = devices.findIndex((device) => device.deviceId === deviceId);
+            const existing = index >= 0 ? devices[index] : { deviceId };
+            // A partial update: the identity fields the device itself writes (hostname, ip, model)
+            // are never in the body, so they survive an edit that only renames a player.
+            const merged: AudioserverClientDeviceConfig = { ...existing, ...update, deviceId };
+            if (index >= 0) {
+              devices[index] = merged;
+            } else {
+              devices.push(merged);
+            }
+            claimRoom(config, merged);
+          });
+        } catch (err) {
+          deps.log.warn('audioserver client update failed', { err, deviceId });
+          deps.sendJson(res, 500, { error: 'audioserverclient-update-failed' });
+          return;
+        }
+
+        deps.log.info('audioserver client configured', {
+          deviceId,
+          players: update.players?.length ?? 0,
+          sources: update.sources?.length ?? 0,
+          beoremoteZone: update.beoremote?.zoneId,
+        });
+        deps.sendJson(res, 200, deps.audioserverClientApi.viewForAdmin(deviceId));
+      },
+    },
+    {
+      method: 'DELETE',
+      pattern: /^\/audioserverclients\/([^/]+)$/,
+      handler: async (_req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        // Forgetting a device that a zone still points at would leave that room silent with no
+        // indication why, so the zone has to be repointed first.
+        const assigned = assignedClientIds(deps);
+        const claimed = deps.audioserverClientApi
+          .clientIdsFor(deviceId)
+          .filter((clientId) => assigned.has(clientId));
+        if (claimed.length) {
+          deps.sendJson(res, 409, { error: 'device-in-use', clientIds: claimed });
+          return;
+        }
+        try {
+          await deps.audioserverClientApi.forget(deviceId);
+        } catch (err) {
+          deps.log.warn('audioserver client delete failed', { err, deviceId });
+          deps.sendJson(res, 500, { error: 'audioserverclient-delete-failed' });
+          return;
+        }
+        res.writeHead(204);
+        res.end();
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/audioserverclients\/client-version$/,
+      handler: async (req, res) => {
+        const body = (await deps.readJsonBody(req, res)) as { version?: unknown } | null;
+        const version = typeof body?.version === 'string' ? body.version : '';
+        let entry: AudioserverClientComponentConfig;
+        try {
+          entry = await clientComponentFor(version);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'invalid-version';
+          deps.log.warn('audioserver client version not published', { version, reason });
+          deps.sendJson(res, 400, { error: reason });
+          return;
+        }
+
+        try {
+          await deps.configPort.updateConfig((config) => {
+            config.audioserverClients = config.audioserverClients ?? {};
+            const components = config.audioserverClients.components ?? [];
+            const index = components.findIndex((candidate) => candidate.name === CLIENT_COMPONENT);
+            if (index >= 0) {
+              components[index] = entry;
+            } else {
+              components.push(entry);
+            }
+            config.audioserverClients.components = components;
+          });
+        } catch (err) {
+          deps.log.warn('audioserver client version update failed', { err, version });
+          deps.sendJson(res, 500, { error: 'client-version-failed' });
+          return;
+        }
+
+        // Nothing is pushed: every device asks on its next poll, installs when it is not playing,
+        // and reports what it ended up running.
+        deps.log.info('audioserver client version set', { version: entry.version });
+        deps.sendJson(res, 200, entry);
+      },
+    },
+    {
+      method: 'POST',
+      pattern: /^\/audioserverclients\/([^/]+)\/commands$/,
+      handler: async (req, res, match) => {
+        const deviceId = decodeURIComponent(match[1] ?? '').trim();
+        if (!deviceId) {
+          deps.sendJson(res, 400, { error: 'missing-device-id' });
+          return;
+        }
+        if (!deps.audioserverClientApi.isKnown(deviceId)) {
+          deps.sendJson(res, 404, { error: 'device-not-found' });
+          return;
+        }
+        const body = (await deps.readJsonBody(req, res)) as
+          | { command?: unknown; args?: unknown }
+          | null;
+        const command = typeof body?.command === 'string' ? body.command.trim() : '';
+        if (!DEVICE_COMMANDS.has(command)) {
+          deps.sendJson(res, 400, {
+            error: 'unsupported-command',
+            supported: [...DEVICE_COMMANDS],
+          });
+          return;
+        }
+        const args = Array.isArray(body?.args)
+          ? body!.args!.filter((arg): arg is string => typeof arg === 'string')
+          : [];
+        deps.audioserverClientApi.queueCommand(deviceId, command, args);
+        // Accepted, not done: the device picks it up on its next poll and reports the outcome in
+        // its status, which is where the UI should look for the result.
+        deps.sendJson(res, 202, { ok: true, command, args });
+      },
+    },
+  ];
+}
+
+/**
+ * Sendspin client ids something in the config currently points at.
+ *
+ * A zone's output, the satellites listening alongside it, and any line-in input fed by a Sendspin
+ * source. All three would break silently if the device behind the id were forgotten, and a room that
+ * has gone quiet for no visible reason is the failure this check exists to prevent.
+ */
+function assignedClientIds(deps: AudioserverClientAdminHandlerDeps): Set<string> {
+  const assigned = new Set<string>();
+  const add = (value: unknown): void => {
+    if (typeof value === 'string' && value.trim()) {
+      assigned.add(value.trim());
+    }
+  };
+
+  for (const zone of deps.configPort.getConfig().zones ?? []) {
+    for (const output of [zone.output, ...(zone.transports ?? [])]) {
+      if (!output) {
+        continue;
+      }
+      const record = output as Record<string, unknown>;
+      add(record.clientId);
+      for (const satellite of asArray(record.satellites)) {
+        // Satellites are either bare client ids or objects carrying one.
+        add(typeof satellite === 'string' ? satellite : asRecord(satellite).clientId);
+      }
+    }
+  }
+
+  for (const input of deps.configPort.getConfig().inputs?.lineIn?.inputs ?? []) {
+    const source = asRecord((input as Record<string, unknown>).source);
+    if (String(source.type ?? '').toLowerCase() !== 'sendspin') {
+      continue;
+    }
+    add(source.clientId);
+    add(source.client_id);
+  }
+  return assigned;
+}
+
+/**
+ * Make a room actually play through the box that says it serves it.
+ *
+ * Saying "this is the Kitchen" has to mean something on its own, or it is a label. So the room's
+ * speaker becomes this device's player — but only when the room has none yet. A room already
+ * playing through something else keeps it: someone chose that, and silently replacing a Sonos
+ * because a Pi was assigned to the same room is the kind of surprise that costs trust. The screen
+ * says which it is and offers the swap as a button.
+ *
+ * Bluetooth and the remote need nothing here: the client API resolves those from this same claim.
+ */
+function claimRoom(config: any, device: AudioserverClientDeviceConfig): void {
+  if (typeof device.zoneId !== 'number') return;
+  const zone = (config.zones ?? []).find((entry: any) => entry.id === device.zoneId);
+  if (!zone) return;
+  const player = (device.players ?? []).find((entry) => entry.enabled !== false);
+  if (!player?.clientId) return;
+  const output = zone.output && typeof zone.output === 'object' ? zone.output : null;
+  const hasOutput = Boolean(output?.id) || (Array.isArray(zone.transports) && zone.transports.length > 0);
+  if (hasOutput) return;
+  zone.output = { id: 'sendspin', clientId: player.clientId };
+}
+
+function sanitizeDevice(body: Record<string, unknown>): Partial<AudioserverClientDeviceConfig> {
+  const update: Partial<AudioserverClientDeviceConfig> = {};
+  if ('name' in body) {
+    update.name = optionalString(body.name);
+  }
+  if ('enabled' in body) {
+    update.enabled = body.enabled !== false;
+  }
+  if ('players' in body) {
+    update.players = sanitizePlayers(body.players);
+  }
+  if ('sources' in body) {
+    update.sources = sanitizeSources(body.sources);
+  }
+  if ('beoremote' in body) {
+    update.beoremote = sanitizeBeoremote(body.beoremote);
+  }
+  if ('zoneId' in body) {
+    const zoneId = optionalNumber(body.zoneId, 0, 100_000);
+    update.zoneId = typeof zoneId === 'number' ? zoneId : null;
+  }
+  if ('requiredComponents' in body) {
+    update.requiredComponents = asArray(body.requiredComponents)
+      .map((entry) => optionalString(entry))
+      .filter((entry): entry is string => !!entry);
+  }
+  return update;
+}
+
+function sanitizePlayers(value: unknown): AudioserverClientPlayerConfig[] {
+  const seen = new Set<string>();
+  return asArray(value).map((raw) => {
+    const entry = asRecord(raw);
+    const clientId = optionalString(entry.clientId);
+    if (!clientId) {
+      throw new Error('player-missing-client-id');
+    }
+    // Two players on one id would have the device open two connections claiming to be the same
+    // client, and the server would treat the second as a reconnect of the first.
+    if (seen.has(clientId)) {
+      throw new Error('duplicate-client-id');
+    }
+    seen.add(clientId);
+    return {
+      clientId,
+      name: optionalString(entry.name),
+      output: optionalString(entry.output),
+      enabled: entry.enabled === undefined ? undefined : entry.enabled !== false,
+      delayMs: optionalNumber(entry.delayMs, 0, 5_000),
+      volume: optionalNumber(entry.volume, 0, 100),
+      muted: entry.muted === undefined ? undefined : entry.muted === true,
+      volumeHook: optionalString(entry.volumeHook),
+      volumeControl: sanitizeVolumeControl(entry.volumeControl),
+      mixerElement: optionalString(entry.mixerElement),
+      mixerMapped: entry.mixerMapped === undefined ? undefined : entry.mixerMapped === true,
+      codecs: asArray(entry.codecs)
+        .map((codec) => optionalString(codec))
+        .filter((codec): codec is string => !!codec),
+      sampleRate: optionalNumber(entry.sampleRate, 8_000, 384_000),
+      bitDepth: optionalNumber(entry.bitDepth, 8, 32),
+      channels: optionalNumber(entry.channels, 1, 8),
+      bufferMs: optionalNumber(entry.bufferMs, 0, 30_000),
+      requiredLeadTimeMs: optionalNumber(entry.requiredLeadTimeMs, 0, 30_000),
+    } satisfies AudioserverClientPlayerConfig;
+  });
+}
+
+/**
+ * Where a speaker applies volume, or nothing at all.
+ *
+ * An unknown value becomes `undefined` rather than an error: absent means "decide on the device",
+ * which is the sane behaviour for a setting whose whole point is that the hardware knows better than
+ * this config file does.
+ */
+function sanitizeVolumeControl(
+  value: unknown,
+): AudioserverClientPlayerConfig['volumeControl'] | undefined {
+  const control = optionalString(value)?.toLowerCase();
+  return control === 'auto' || control === 'software' || control === 'alsa' || control === 'hook'
+    ? control
+    : undefined;
+}
+
+function sanitizeSources(value: unknown): AudioserverClientSourceConfig[] {
+  const seen = new Set<string>();
+  return asArray(value).map((raw) => {
+    const entry = asRecord(raw);
+    const clientId = optionalString(entry.clientId);
+    if (!clientId) {
+      throw new Error('source-missing-client-id');
+    }
+    if (seen.has(clientId)) {
+      throw new Error('duplicate-client-id');
+    }
+    seen.add(clientId);
+    return {
+      clientId,
+      name: optionalString(entry.name),
+      input: optionalString(entry.input),
+      enabled: entry.enabled === undefined ? undefined : entry.enabled !== false,
+      codec: optionalString(entry.codec),
+      sampleRate: optionalNumber(entry.sampleRate, 8_000, 384_000),
+      bitDepth: optionalNumber(entry.bitDepth, 8, 32),
+      channels: optionalNumber(entry.channels, 1, 8),
+      frameMs: optionalNumber(entry.frameMs, 5, 200),
+      thresholdDb: optionalNumber(entry.thresholdDb, -120, 0),
+      holdMs: optionalNumber(entry.holdMs, 0, 60_000),
+      controls: asArray(entry.controls)
+        .map((control) => optionalString(control))
+        .filter((control): control is string => !!control),
+      controlHook: optionalString(entry.controlHook),
+      alwaysOn: entry.alwaysOn === undefined ? undefined : entry.alwaysOn === true,
+    } satisfies AudioserverClientSourceConfig;
+  });
+}
+
+function sanitizeBeoremote(value: unknown): AudioserverClientBeoremoteConfig | null {
+  if (value === null) {
+    return null;
+  }
+  const entry = asRecord(value);
+  const enabled = entry.enabled === true;
+  const zoneId = optionalNumber(entry.zoneId, 1, Number.MAX_SAFE_INTEGER);
+  if (enabled && zoneId === undefined) {
+    // Without a zone there is nothing to render on the remote and nothing for its keys to act on.
+    throw new Error('beoremote-missing-zone');
+  }
+  return {
+    enabled,
+    zoneId,
+    menuPollMs: optionalNumber(entry.menuPollMs, 2_000, 300_000),
+    volumePlayer: optionalString(entry.volumePlayer),
+    volumeStep: optionalNumber(entry.volumeStep, 1, 50),
+  };
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function optionalNumber(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(max, Math.max(min, value));
+}

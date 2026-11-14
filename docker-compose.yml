@@ -1,0 +1,25 @@
+services:
+  audioserver:
+    container_name: audioserver
+    image: audioserver:latest
+    hostname: audioserver
+    restart: unless-stopped
+    network_mode: host
+    # Mounting an SMB/NAS share from inside the container needs both of these, and neither works
+    # without the other: SYS_ADMIN is what the mount itself requires, and Docker's default AppArmor
+    # profile blocks mounting even when that capability is granted. Leaving security_opt out is the
+    # usual cause of "mount error(13): Permission denied" on an otherwise correct share (#323).
+    # Under rootless Docker or userns-remap, mounting from inside the container is not possible at
+    # all — mount the share on the host there and pass the folder in as a volume instead.
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    security_opt:
+      - apparmor:unconfined
+    # Power Manager note:
+    # - gpioset needs the relevant /dev/gpiochip* device inside the container.
+    # - USB HID relay boards via crelay need the matching /dev/hidraw* device.
+    # - Example for Raspberry Pi 4 header GPIOs and one HID relay:
+    # devices:
+    #   - /dev/gpiochip0:/dev/gpiochip0
+    #   - /dev/hidraw1:/dev/hidraw1

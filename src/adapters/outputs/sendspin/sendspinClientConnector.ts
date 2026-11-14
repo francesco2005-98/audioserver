@@ -1,0 +1,914 @@
+import type { IncomingMessage } from 'node:http';
+import WebSocket from 'ws';
+import type { RawData } from 'ws';
+import { createLogger } from '@/shared/logging/logger';
+import { ConnectionReason, sendspinCore, TERMINAL_GOODBYE_REASONS } from '@sonn-audio/node-sendspin';
+import type { SendspinPairingRequiredReason } from '@sonn-audio/node-sendspin';
+import type { MdnsBrowser, MdnsPort, MdnsRegistration, MdnsServiceRecord } from '@/ports/MdnsPort';
+
+interface Endpoint {
+  url: string;
+  serviceName?: string;
+  candidateMatch: boolean;
+  reason: 'discovery' | 'playback';
+  clientId?: string;
+}
+
+/** What a dialled socket showed of itself, kept to explain its close. */
+interface SocketTrace {
+  openedAt: number | null;
+  /** `type` of the first text message the client sent, or null when it sent none. */
+  firstType: string | null;
+  /** `payload.version` of the client's opening `client/init` or `client/hello`, as sent. */
+  helloVersion: unknown;
+  /** The close our side sent (the session refusing the client), if it was ours. */
+  serverClose: { code: number | null; reason: string } | null;
+  /**
+   * The reason of a `client/goodbye`, read from the session as the socket closes. Under
+   * encryption the goodbye travels encrypted, so only the session saw it; it then closes the
+   * socket without a reason, which on its own would read as the server hanging up.
+   */
+  goodbye?: string | null;
+  /** Why the session was held idle (pairing required) when it closed, if it was. */
+  pairingRequired?: SendspinPairingRequiredReason | null;
+  helloTimer: NodeJS.Timeout | null;
+}
+
+/** `server/error` reasons node-sendspin answers an unacceptable `client/init` with. */
+const INIT_REJECTIONS: Record<string, string> = {
+  unsupported_version: 'a core protocol version this server does not speak',
+  unsupported_suite: 'a Noise suite this server does not implement',
+  malformed: 'a malformed client/init',
+};
+
+/** How long a client gets to say hello before the log says it has not. */
+const HELLO_WAIT_MS = 10_000;
+/** A connection that lasted this long was working; its drop is not a repeat of an earlier one. */
+const HEALTHY_SESSION_MS = 60_000;
+/** The core protocol version node-sendspin speaks (`client/hello` `version`). */
+const SUPPORTED_PROTOCOL_VERSION = 1;
+
+/** Why a dialled socket closed, in words a log reader can act on. */
+export function describeDrop(trace: Omit<SocketTrace, 'helloTimer' | 'openedAt'>, code: number, reason: string): string {
+  const idle = trace.pairingRequired
+    ? ` (the session was held idle: ${describePairingRequired(trace.pairingRequired)})`
+    : '';
+  if (trace.goodbye) {
+    const hint =
+      trace.goodbye === 'pairing_required'
+        ? ': it will not play for an unpaired server; enable unpaired access on the device (audioserver cannot pair yet)'
+        : '';
+    return `client said goodbye (${trace.goodbye})${hint}`;
+  }
+  if (trace.serverClose) {
+    const rejection = INIT_REJECTIONS[trace.serverClose.reason];
+    if (rejection && trace.firstType === 'client/init') {
+      return (
+        `server refused the client's client/init with server/error ${trace.serverClose.reason}:` +
+        ` ${rejection} (version ${JSON.stringify(trace.helloVersion ?? null)}; this server speaks ${SUPPORTED_PROTOCOL_VERSION})`
+      );
+    }
+    const said = trace.serverClose.reason || `no reason given, code ${trace.serverClose.code ?? code}`;
+    if (trace.serverClose.reason === 'invalid protocol version') {
+      return (
+        `server refused the client's hello: it carries protocol version ${JSON.stringify(trace.helloVersion ?? null)},` +
+        ` this server speaks version ${SUPPORTED_PROTOCOL_VERSION} (a client on a newer core protocol?)`
+      );
+    }
+    if (trace.firstType && trace.firstType !== 'client/hello' && trace.firstType !== 'client/init') {
+      return `server closed it: ${said} (client opened with ${trace.firstType})`;
+    }
+    return `server closed it: ${said}${idle}`;
+  }
+  if (!trace.firstType) {
+    return `socket open but client never sent client/init or client/hello; client closed it (code ${code}${reason ? `: ${reason}` : ''})`;
+  }
+  return `client closed it (code ${code}${reason ? `: ${reason}` : ''})${idle}`;
+}
+
+/**
+ * What the owner of a device held idle for pairing has to do about it.
+ *
+ * audioserver admits every client with the published Sentinel PSK and cannot pair, so the way out is
+ * almost always the device's own unpaired-access switch, which sendspin-cpp ships turned off.
+ */
+export function describePairingRequired(reason: SendspinPairingRequiredReason): string {
+  switch (reason) {
+    case 'unpaired_access_disabled':
+      return 'the device only plays for servers it is paired with; enable unpaired access on the device (audioserver cannot pair yet)';
+    case 'not_approved':
+      return 'the device is not approved for unpaired playback on this server';
+    case 'credential_mismatch':
+      return 'the device no longer holds the pairing this server knows it by; pair it again or enable unpaired access on it';
+    default:
+      return `pairing required (${String(reason)})`;
+  }
+}
+
+/**
+ * Discovers Sendspin clients via mDNS and establishes outbound WebSocket connections
+ * so playback can be pushed without manually starting the client with a URL.
+ */
+export class SendspinClientConnector {
+  private readonly log = createLogger('Sendspin', 'Connector');
+  private readonly desiredClientIds = new Set<string>();
+  private readonly desiredReasons = new Map<string, 'discovery' | 'playback'>();
+  private readonly activeSockets = new Map<string, WebSocket>();
+  private readonly socketReason = new Map<string, ConnectionReason>();
+  private readonly socketClientId = new Map<string, string>();
+  private readonly clientSocketUrl = new Map<string, string>();
+  private readonly directEndpoints = new Map<string, string>();
+  private readonly configuredEndpointUrls = new Map<string, string>();
+  private readonly failures = new Map<string, { count: number; lastError: string | null; suppressedUntil: number | null }>();
+  private readonly lastAttempts = new Map<string, number>();
+  private readonly retryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly knownServices = new Map<string, MdnsServiceRecord>();
+  private readonly inboundClients = new Set<string>();
+  private readonly directPortFallbackTried = new Set<string>();
+  private readonly resolvedClientIds = new Map<string, string>();
+  private readonly resolveListeners = new Map<string, Set<(resolvedClientId: string) => void>>();
+  private readonly lastDrops = new Map<string, { why: string; repeats: number }>();
+  private readonly pairingRequired = new Map<string, SendspinPairingRequiredReason>();
+  private browser: MdnsBrowser | null = null;
+  private serverRegistration: MdnsRegistration | null = null;
+
+  constructor(private readonly mdns: MdnsPort) {}
+
+  public watchClient(clientId: string, endpointUrl?: string): () => void {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return () => {};
+    }
+    const explicitUrl = this.normalizeExplicitEndpoint(endpointUrl);
+    if (explicitUrl) {
+      this.configuredEndpointUrls.set(normalized, explicitUrl);
+    } else {
+      this.configuredEndpointUrls.delete(normalized);
+    }
+    this.desiredClientIds.add(normalized);
+    if (!this.desiredReasons.has(normalized)) {
+      this.desiredReasons.set(normalized, 'discovery');
+    }
+    if (this.shouldUseDirectDial(normalized)) {
+      this.maybeConnectDirect(normalized);
+    }
+    this.ensureBrowser();
+    this.retryKnownServices();
+    return () => this.unwatchClient(normalized);
+  }
+
+  /** Elevate a target client to playback priority (for reclaim during active playback). */
+  public requestPlaybackPriority(clientId: string): void {
+    const normalized = this.resolveClientId(clientId);
+    if (!normalized) {
+      return;
+    }
+    this.desiredReasons.set(normalized, 'playback');
+    const url = this.clientSocketUrl.get(normalized);
+    if (url) {
+      this.lastAttempts.delete(url);
+    }
+    if (this.shouldUseDirectDial(normalized)) {
+      this.maybeConnectDirect(normalized);
+    }
+    this.retryKnownServices();
+    // Don't force-close existing sockets just to flip the "reason"; it can race with stream start
+    // and looks like a random disconnect in the client.
+  }
+
+  private unwatchClient(clientId: string): void {
+    this.desiredClientIds.delete(clientId);
+    this.desiredReasons.delete(clientId);
+    this.resolvedClientIds.delete(clientId);
+    this.resolveListeners.delete(clientId);
+    this.configuredEndpointUrls.delete(clientId);
+    const url = this.clientSocketUrl.get(clientId);
+    if (url) {
+      this.clientSocketUrl.delete(clientId);
+    }
+    this.directEndpoints.delete(clientId);
+  }
+
+  public resolveClientId(clientId: string): string {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return normalized;
+    }
+    return this.resolvedClientIds.get(normalized) ?? normalized;
+  }
+
+  public onClientResolved(clientId: string, cb: (resolvedClientId: string) => void): () => void {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return () => {};
+    }
+    let set = this.resolveListeners.get(normalized);
+    if (!set) {
+      set = new Set();
+      this.resolveListeners.set(normalized, set);
+    }
+    set.add(cb);
+    const resolved = this.resolvedClientIds.get(normalized);
+    if (resolved) {
+      cb(resolved);
+    }
+    return () => {
+      const listeners = this.resolveListeners.get(normalized);
+      if (!listeners) {
+        return;
+      }
+      listeners.delete(cb);
+      if (!listeners.size) {
+        this.resolveListeners.delete(normalized);
+      }
+    };
+  }
+
+  private updateResolvedClientId(configuredClientId: string, resolvedClientId: string): void {
+    const configured = configuredClientId.trim();
+    const resolved = resolvedClientId.trim();
+    if (!configured || !resolved) {
+      return;
+    }
+    const prev = this.resolvedClientIds.get(configured);
+    if (prev === resolved) {
+      return;
+    }
+    this.resolvedClientIds.set(configured, resolved);
+    if (!this.desiredClientIds.has(resolved)) {
+      this.desiredClientIds.add(resolved);
+      const configuredReason = this.desiredReasons.get(configured);
+      if (configuredReason && !this.desiredReasons.has(resolved)) {
+        this.desiredReasons.set(resolved, configuredReason);
+      }
+    }
+    const listeners = this.resolveListeners.get(configured);
+    if (listeners?.size) {
+      for (const listener of listeners) {
+        try {
+          listener(resolved);
+        } catch {
+          // Ignore listener failures.
+        }
+      }
+    }
+  }
+
+  public advertiseServer(options: { port: number; host?: string; name?: string; path?: string }): void {
+    this.stopAdvertising();
+    this.serverRegistration = this.mdns.publish({
+      name: options.name || 'Lox Audio Server',
+      type: 'sendspin-server',
+      protocol: 'tcp',
+      port: options.port,
+      host: options.host,
+      txt: { path: this.normalizePathValue(options.path) },
+    });
+    this.log.info('Sendspin server advertised via mDNS', {
+      name: options.name || 'Lox Audio Server',
+      host: options.host,
+      port: options.port,
+      path: this.normalizePathValue(options.path),
+    });
+  }
+
+  public stopAdvertising(): void {
+    this.serverRegistration?.stop();
+    this.serverRegistration = null;
+  }
+
+  private ensureBrowser(): void {
+    if (this.browser) {
+      return;
+    }
+    this.browser = this.mdns.browse(
+      { type: 'sendspin', protocol: 'tcp' },
+      (service) => this.handleService(service),
+    );
+  }
+
+  private retryKnownServices(): void {
+    for (const service of this.knownServices.values()) {
+      this.handleService(service);
+    }
+  }
+
+  private handleService(service: MdnsServiceRecord): void {
+    const key = this.serviceKey(service);
+    this.knownServices.set(key, service);
+    if (!this.desiredClientIds.size) {
+      return;
+    }
+
+    const matchedClientId = [...this.desiredClientIds].find((id) => this.serviceMatches(service, id));
+    if (!matchedClientId) {
+      return;
+    }
+
+    const endpoint = this.toEndpoint(service, matchedClientId);
+    if (endpoint) {
+      this.connect(endpoint);
+    }
+  }
+
+  private connect(endpoint: Endpoint): void {
+    if (this.activeSockets.has(endpoint.url)) {
+      return;
+    }
+    if (endpoint.clientId && this.inboundClients.has(endpoint.clientId)) {
+      return;
+    }
+    if (!this.desiredClientIds.size) {
+      return;
+    }
+
+    const now = Date.now();
+    const failureMeta = this.failures.get(endpoint.url);
+    if (failureMeta?.suppressedUntil && now < failureMeta.suppressedUntil) {
+      return;
+    }
+    const lastAttempt = this.lastAttempts.get(endpoint.url) ?? 0;
+    const minIntervalMs = endpoint.reason === 'playback' ? 0 : 3_000;
+    if (now - lastAttempt < minIntervalMs) {
+      return;
+    }
+    this.lastAttempts.set(endpoint.url, now);
+
+    if (endpoint.clientId) {
+      const existingUrl = this.clientSocketUrl.get(endpoint.clientId);
+      if (existingUrl && this.activeSockets.has(existingUrl) && existingUrl !== endpoint.url) {
+        // Already connected to this client id.
+        return;
+      }
+    }
+
+    this.log.info('Sendspin dialing client', {
+      url: endpoint.url,
+      service: endpoint.serviceName,
+    });
+
+    let upgradeReq: IncomingMessage | null = null;
+    let matchedDesired = false;
+    const ws = new WebSocket(endpoint.url);
+    const trace = this.traceSocket(ws);
+    ws.on('upgrade', (req) => {
+      upgradeReq = req;
+    });
+
+    ws.once('open', () => {
+      trace.openedAt = Date.now();
+      trace.helloTimer = setTimeout(() => {
+        trace.helloTimer = null;
+        if (trace.firstType) return;
+        this.log.warn('Sendspin socket open but the client has not sent client/init or client/hello', {
+          url: endpoint.url,
+          clientId: endpoint.clientId,
+          waitedMs: HELLO_WAIT_MS,
+        });
+      }, HELLO_WAIT_MS);
+      trace.helloTimer.unref?.();
+      this.activeSockets.set(endpoint.url, ws);
+      const reason =
+        endpoint.reason === 'playback' ? ConnectionReason.PLAYBACK : ConnectionReason.DISCOVERY;
+      this.socketReason.set(endpoint.url, reason);
+      // Pass the intended connection reason to the session.
+      sendspinCore.handleConnection(ws, upgradeReq, reason);
+    });
+
+    ws.on('message', (data, isBinary) => {
+      if (matchedDesired || isBinary) {
+        return;
+      }
+      const clientId = this.extractClientId(data);
+      if (!clientId) {
+        return;
+      }
+      const configuredId = endpoint.clientId?.trim() || null;
+      const configuredDesired = configuredId ? this.desiredClientIds.has(configuredId) : false;
+      const exactDesired = this.desiredClientIds.has(clientId);
+      if (configuredId && configuredDesired && configuredId !== clientId) {
+        this.updateResolvedClientId(configuredId, clientId);
+        this.log.info('Sendspin client resolved from configured id', {
+          configuredClientId: configuredId,
+          resolvedClientId: clientId,
+          url: endpoint.url,
+        });
+      }
+      matchedDesired = exactDesired || configuredDesired;
+      if (!matchedDesired) {
+        this.log.info('Sendspin client not in config; closing connection', {
+          clientId,
+          url: endpoint.url,
+        });
+        ws.close();
+        return;
+      }
+      // Its first message names it, but under encryption that is `client/init`, before the
+      // handshake and the hello: answering is not yet being identified (see markInboundConnected).
+      this.log.info('Sendspin client answered', { clientId, url: endpoint.url, opening: trace.firstType });
+      this.socketClientId.set(endpoint.url, clientId);
+
+      // If we already had another socket for this clientId, close it in favor of the newest one.
+      const prior = this.clientSocketUrl.get(clientId);
+      if (prior && prior !== endpoint.url) {
+        this.activeSockets.get(prior)?.close();
+      }
+      this.clientSocketUrl.set(clientId, endpoint.url);
+      if (configuredId) {
+        const priorConfigured = this.clientSocketUrl.get(configuredId);
+        if (priorConfigured && priorConfigured !== endpoint.url) {
+          this.activeSockets.get(priorConfigured)?.close();
+        }
+        this.clientSocketUrl.set(configuredId, endpoint.url);
+      }
+
+      // Do not disconnect solely to "upgrade" the connection reason.
+    });
+
+    ws.on('close', (code, reasonBuf) => {
+      if (trace.helloTimer) {
+        clearTimeout(trace.helloTimer);
+        trace.helloTimer = null;
+      }
+      this.activeSockets.delete(endpoint.url);
+      this.socketReason.delete(endpoint.url);
+      const knownClientId = this.socketClientId.get(endpoint.url);
+      if (knownClientId) {
+        this.socketClientId.delete(endpoint.url);
+        if (this.clientSocketUrl.get(knownClientId) === endpoint.url) {
+          this.clientSocketUrl.delete(knownClientId);
+        }
+        for (const [configuredId, resolvedId] of this.resolvedClientIds.entries()) {
+          if (resolvedId === knownClientId && this.clientSocketUrl.get(configuredId) === endpoint.url) {
+            this.clientSocketUrl.delete(configuredId);
+          }
+        }
+      }
+      const reason = reasonBuf ? reasonBuf.toString() : '';
+      // Ours runs before node-sendspin's own close handler, so the session is still there.
+      const session = sendspinCore.getSessionBySocket(ws);
+      trace.goodbye = session?.getLastGoodbyeReason() ?? null;
+      trace.pairingRequired = session?.getPairingRequired?.() ?? null;
+      const goodbyeReason = this.parseGoodbyeReason(reason) ?? trace.goodbye;
+      const shouldRetry =
+        (matchedDesired || endpoint.candidateMatch) &&
+        !this.shouldSuppressRetry(goodbyeReason);
+      if (trace.openedAt !== null) {
+        this.logDrop(endpoint, trace, code, reason, shouldRetry);
+      }
+      this.scheduleRetry(endpoint, shouldRetry);
+    });
+
+    ws.on('error', (err) => {
+      this.log.debug('Sendspin socket error', {
+        url: endpoint.url,
+        message: (err as Error).message,
+      });
+      this.recordFailure(endpoint, (err as Error).message);
+    });
+  }
+
+  /**
+   * Watch a dialled socket closely enough to say afterwards why it did not last.
+   *
+   * The session that owns the socket (node-sendspin) closes it itself when a hello is refused —
+   * a protocol version it does not speak, missing roles, a client state that never came — and
+   * only the peer's echo of that close reaches our `close` event, usually without the reason. So
+   * the close is recorded as it is sent, next to what the client opened with.
+   */
+  private traceSocket(ws: WebSocket): SocketTrace {
+    const trace: SocketTrace = {
+      openedAt: null,
+      firstType: null,
+      helloVersion: undefined,
+      serverClose: null,
+      helloTimer: null,
+    };
+    ws.on('message', (data, isBinary) => {
+      if (trace.firstType || isBinary) return;
+      try {
+        const msg = JSON.parse(data.toString()) as { type?: unknown; payload?: { version?: unknown } };
+        trace.firstType = typeof msg?.type === 'string' ? msg.type : '(untyped)';
+        if (msg?.type === 'client/hello' || msg?.type === 'client/init') trace.helloVersion = msg.payload?.version;
+      } catch {
+        trace.firstType = '(not JSON)';
+      }
+    });
+    const close = ws.close.bind(ws);
+    ws.close = (code?: number, reason?: string | Buffer) => {
+      trace.serverClose ??= { code: code ?? null, reason: reason ? reason.toString() : '' };
+      close(code, reason);
+    };
+    return trace;
+  }
+
+  /** One line on why a dialled socket closed — at warn when the cause is new, then quietly. */
+  private logDrop(endpoint: Endpoint, trace: SocketTrace, code: number, reason: string, redialing: boolean): void {
+    const upMs = trace.openedAt !== null ? Date.now() - trace.openedAt : null;
+    const why = describeDrop(trace, code, reason);
+    const previous = this.lastDrops.get(endpoint.url);
+    // A connection that held for a while was a working one; whatever ends the next is news.
+    const repeats = previous && previous.why === why && (upMs ?? 0) < HEALTHY_SESSION_MS ? previous.repeats + 1 : 0;
+    this.lastDrops.set(endpoint.url, { why, repeats });
+    const fields = {
+      url: endpoint.url,
+      clientId: this.socketClientIdFor(endpoint),
+      why,
+      upMs,
+      ...(repeats ? { repeats } : {}),
+    };
+    const message = redialing ? 'Sendspin connection dropped; redialing' : 'Sendspin connection dropped';
+    if (repeats) {
+      this.log.debug(message, fields);
+    } else {
+      this.log.warn(message, fields);
+    }
+  }
+
+  private socketClientIdFor(endpoint: Endpoint): string | undefined {
+    return endpoint.clientId ? this.resolveClientId(endpoint.clientId) : undefined;
+  }
+
+  private scheduleRetry(endpoint: Endpoint, shouldRetry: boolean): void {
+    if (!shouldRetry || !this.desiredClientIds.size) {
+      return;
+    }
+    if (endpoint.clientId && this.inboundClients.has(endpoint.clientId)) {
+      return;
+    }
+    if (this.retryTimers.has(endpoint.url)) {
+      return;
+    }
+
+    // If a direct endpoint on 8927 is refusing connections, try the spec default 8928 once.
+    const fallback = this.maybeFallbackDirectPort(endpoint);
+    if (fallback) {
+      this.connect(fallback);
+      return;
+    }
+
+    const delayMs = endpoint.reason === 'playback' ? 500 : 5_000;
+    const failureMeta = this.failures.get(endpoint.url);
+    const suppressedUntil = failureMeta?.suppressedUntil ?? null;
+    if (suppressedUntil && Date.now() < suppressedUntil) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(endpoint.url);
+      const failureMeta = this.failures.get(endpoint.url);
+      if (failureMeta?.suppressedUntil && Date.now() < failureMeta.suppressedUntil) {
+        return;
+      }
+      this.connect(endpoint);
+    }, delayMs);
+    this.retryTimers.set(endpoint.url, timer);
+  }
+
+  private recordFailure(endpoint: Endpoint, message: string | null): void {
+    const url = endpoint.url;
+    const meta = this.failures.get(url) ?? { count: 0, lastError: null, suppressedUntil: null };
+    const nextCount = (meta.count || 0) + 1;
+    const normalizedMsg = message ? message.toLowerCase() : null;
+    let suppressedUntil: number | null = meta.suppressedUntil ?? null;
+    // If DNS lookup failed repeatedly, back off longer to avoid log spam.
+    if (normalizedMsg && normalizedMsg.includes('enotfound') && nextCount >= 3) {
+      suppressedUntil = Date.now() + 60_000; // 60s suppression
+      this.log.info('Sendspin direct endpoint suppressed after repeated DNS failures', {
+        url,
+        attempts: nextCount,
+        retryAfterMs: 60_000,
+      });
+    }
+    this.failures.set(url, { count: nextCount, lastError: message, suppressedUntil });
+  }
+
+  private extractClientId(raw: RawData): string | null {
+    try {
+      const msg = JSON.parse(raw.toString());
+      return msg?.payload?.client_id || msg?.payload?.clientId || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private toEndpoint(service: MdnsServiceRecord, clientId: string): Endpoint | null {
+    const address = this.pickAddress(service);
+    if (!address || !service.port) {
+      this.log.debug('Sendspin mDNS entry missing address/port', { service: service.name });
+      return null;
+    }
+    const path = this.normalizePathFromTxt(service.txt);
+    const hostFmt = address.includes(':') ? `[${address}]` : address;
+    const url = `ws://${hostFmt}:${service.port}${path}`;
+    return {
+      url,
+      serviceName: service.name,
+      candidateMatch: true,
+      reason: this.desiredReasons.get(clientId) ?? 'discovery',
+      clientId,
+    };
+  }
+
+  private maybeConnectDirect(clientId: string): void {
+    if (!this.shouldUseDirectDial(clientId)) {
+      return;
+    }
+    const endpoint = this.buildDirectEndpoint(clientId);
+    if (!endpoint) {
+      return;
+    }
+    this.directEndpoints.set(clientId, endpoint.url);
+    this.connect(endpoint);
+  }
+
+  private buildDirectEndpoint(clientId: string): Endpoint | null {
+    const reason = this.desiredReasons.get(clientId) ?? 'discovery';
+    const trimmed = clientId.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const explicit = this.configuredEndpointUrls.get(trimmed);
+    if (explicit) {
+      return {
+        url: explicit,
+        serviceName: 'configured-endpoint',
+        candidateMatch: true,
+        reason,
+        clientId: trimmed,
+      };
+    }
+
+    // If a full WebSocket URL is provided, use it verbatim.
+    const hasScheme = /^wss?:\/\//i.test(trimmed);
+    let url = trimmed;
+
+    if (!hasScheme) {
+      const hostPort = trimmed.includes(':') ? trimmed : `${trimmed}:8927`;
+      const parts = hostPort.split(':');
+      const host = parts.slice(0, -1).join(':') || hostPort;
+      const port = parts.length > 1 ? parts[parts.length - 1] : '8927';
+      const hostFmt = host.includes(':') ? `[${host}]` : host;
+      url = `ws://${hostFmt}:${port}/sendspin`;
+    }
+
+    try {
+      // Validate URL; will throw if invalid.
+
+      new URL(url);
+    } catch {
+      return null;
+    }
+
+    return {
+      url,
+      serviceName: 'direct',
+      candidateMatch: true,
+      reason,
+      clientId: trimmed,
+    };
+  }
+
+  private pickAddress(service: MdnsServiceRecord): string | null {
+    const addresses = (service.addresses || []).filter(Boolean) as string[];
+    const ipv4 = addresses.find((addr) => addr.includes('.'));
+    if (ipv4) {
+      return ipv4;
+    }
+    if (service.host) {
+      return service.host;
+    }
+    if (service.name) {
+      return service.name;
+    }
+    return null;
+  }
+
+  private normalizePathFromTxt(txt?: Record<string, unknown>): string {
+    return this.normalizePathValue(typeof txt?.path === 'string' ? txt.path : undefined);
+  }
+
+  private normalizePathValue(path?: string): string {
+    const raw = path || '/sendspin';
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+
+  private normalizeExplicitEndpoint(endpointUrl?: string): string | null {
+    const raw = typeof endpointUrl === 'string' ? endpointUrl.trim() : '';
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+        return null;
+      }
+      const path = parsed.pathname || '/sendspin';
+      parsed.pathname = path.startsWith('/') ? path : `/${path}`;
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Use direct dialing only when the config explicitly looks like an endpoint/host target.
+   * For plain Sendspin client IDs (e.g. "sendspin-cli-Mac"), rely on mDNS discovery.
+   */
+  private shouldUseDirectDial(clientId: string): boolean {
+    const trimmed = clientId.trim();
+    if (!trimmed) {
+      return false;
+    }
+    if (this.configuredEndpointUrls.has(trimmed)) {
+      return true;
+    }
+    if (/^wss?:\/\//i.test(trimmed)) {
+      return true;
+    }
+    // Explicit host:port (or [ipv6]:port) should still dial directly.
+    if (/^\[[^\]]+\]:\d+$/.test(trimmed)) {
+      return true;
+    }
+    if (/^[^:\s]+:\d+$/.test(trimmed)) {
+      return true;
+    }
+    // Plain IPv4 literal; default port/path direct dialing is reasonable.
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed)) {
+      return true;
+    }
+    // Otherwise treat as logical Sendspin client id and wait for mDNS endpoint.
+    return false;
+  }
+
+  private serviceMatches(service: MdnsServiceRecord, clientId: string): boolean {
+    const id = clientId.toLowerCase();
+    const values = [
+      service.name,
+      service.host,
+      ...(service.addresses || []),
+    ]
+      .filter(Boolean)
+      .map((v) => (v as string).toLowerCase());
+    return values.some((val) => val === id || val.startsWith(id) || id.startsWith(val));
+  }
+
+  private serviceKey(service: MdnsServiceRecord): string {
+    return `${service.name || service.host || 'unknown'}:${service.port}`;
+  }
+
+  /**
+   * Record why a client's session is held idle, or that it no longer is (`null`).
+   *
+   * Such a session stays open and never plays: node-sendspin declares no activity and no role on
+   * it, so nothing drops and nothing in the dial log would say why the room is silent. Said once
+   * per client and reason, at warning level, since only the device's owner can fix it.
+   */
+  public notePairingRequired(clientId: string, reason: SendspinPairingRequiredReason | null): void {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return;
+    }
+    const previous = this.pairingRequired.get(normalized) ?? null;
+    if (previous === reason) {
+      return;
+    }
+    if (!reason) {
+      this.pairingRequired.delete(normalized);
+      this.log.info('Sendspin client admitted for playback', { clientId: normalized, previously: previous });
+      return;
+    }
+    this.pairingRequired.set(normalized, reason);
+    this.log.warn('Sendspin client connected but will not play until it is paired', {
+      clientId: normalized,
+      reason,
+      fix: describePairingRequired(reason),
+    });
+  }
+
+  /** Why the client's last session was held idle for pairing, or null when it was not. */
+  public getPairingRequired(clientId: string): SendspinPairingRequiredReason | null {
+    return this.pairingRequired.get(this.resolveClientId(clientId)) ?? this.pairingRequired.get(clientId.trim()) ?? null;
+  }
+
+  /** The client's session identified: hello done and, for an rc1 client, its first state in. */
+  public markInboundConnected(clientId: string): void {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return;
+    }
+    if (!this.inboundClients.has(normalized)) {
+      this.log.info('Sendspin client identified', { clientId: normalized });
+    }
+    this.inboundClients.add(normalized);
+  }
+
+  /**
+   * The client's live session ended. Dial it again unless it said not to.
+   *
+   * Nothing else would: when our own socket to it closes, that close is handled while the
+   * session still counts as connected, so `scheduleRetry` stands down, and mDNS stays quiet
+   * when the client comes back with an unchanged record. A client that restarted mid-playback
+   * was then only reached again after a server restart.
+   */
+  public markInboundDisconnected(clientId: string, goodbyeReason?: string | null): void {
+    const normalized = clientId.trim();
+    if (!normalized) {
+      return;
+    }
+    this.inboundClients.delete(normalized);
+    if (this.shouldSuppressRetry(goodbyeReason ?? null)) {
+      return;
+    }
+    this.redial(normalized);
+  }
+
+  /** Dial every endpoint known for a watched client now, past the attempt interval. */
+  private redial(clientId: string): void {
+    const ids = new Set<string>();
+    if (this.desiredClientIds.has(clientId)) {
+      ids.add(clientId);
+    }
+    for (const [configuredId, resolvedId] of this.resolvedClientIds.entries()) {
+      if (resolvedId === clientId && this.desiredClientIds.has(configuredId)) {
+        ids.add(configuredId);
+      }
+    }
+    const endpoints = new Map<string, Endpoint>();
+    for (const id of ids) {
+      const direct = this.shouldUseDirectDial(id) ? this.buildDirectEndpoint(id) : null;
+      if (direct) {
+        this.directEndpoints.set(id, direct.url);
+        endpoints.set(direct.url, direct);
+      }
+      for (const service of this.knownServices.values()) {
+        const endpoint = this.serviceMatches(service, id) ? this.toEndpoint(service, id) : null;
+        if (endpoint && !endpoints.has(endpoint.url)) {
+          endpoints.set(endpoint.url, endpoint);
+        }
+      }
+    }
+    for (const endpoint of endpoints.values()) {
+      this.lastAttempts.delete(endpoint.url);
+      this.connect(endpoint);
+    }
+  }
+
+  private parseGoodbyeReason(reason: string): string | null {
+    const prefix = 'client goodbye:';
+    if (!reason || !reason.startsWith(prefix)) {
+      return null;
+    }
+    return reason.slice(prefix.length).trim() || null;
+  }
+
+  /**
+   * Whether a goodbye means reconnecting is pointless.
+   *
+   * The client is telling us it will not accept this server as it stands, so a retry
+   * just earns the same refusal. `restart` is deliberately not in the list — a
+   * restarting client is expected back.
+   */
+  private shouldSuppressRetry(reason: string | null): boolean {
+    if (!reason) {
+      return false;
+    }
+    return (TERMINAL_GOODBYE_REASONS as readonly string[]).includes(reason);
+  }
+
+  private maybeFallbackDirectPort(endpoint: Endpoint): Endpoint | null {
+    if (!endpoint.clientId) {
+      return null;
+    }
+    if (endpoint.serviceName !== 'direct') {
+      return null;
+    }
+    const failure = this.failures.get(endpoint.url);
+    const msg = (failure?.lastError ?? '').toLowerCase();
+    if (!msg.includes('econnrefused')) {
+      return null;
+    }
+
+    // Only attempt the fallback once per client id.
+    const key = endpoint.clientId;
+    if (this.directPortFallbackTried.has(key)) {
+      return null;
+    }
+
+    // Convert ws://host:8927/sendspin -> ws://host:8928/sendspin
+    if (!endpoint.url.includes(':8927/')) {
+      return null;
+    }
+    const fallbackUrl = endpoint.url.replace(':8927/', ':8928/');
+    if (fallbackUrl === endpoint.url) {
+      return null;
+    }
+
+    this.directPortFallbackTried.add(key);
+    this.lastAttempts.delete(fallbackUrl);
+    return {
+      ...endpoint,
+      url: fallbackUrl,
+      serviceName: 'direct-fallback',
+    };
+  }
+}

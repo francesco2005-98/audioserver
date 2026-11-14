@@ -1,0 +1,29 @@
+# Audioserver
+
+Audioserver is a self-hosted multiroom audio server. It collects local files, streaming
+services, radio and line-in, and plays them in sync on the speakers you already own.
+It can run on its own or as a Loxone Audioserver.
+
+> **Status: 4.0 beta.** Breaking changes can still land between betas.
+
+## Quick start
+
+```bash
+docker compose up -d
+```
+
+Then open `http://<server-ip>:7090`, create your admin account, and walk the three steps: **Content**
+— add your music. **Access** — switch on how to reach it. **Zones** — only if you want rooms. The
+first two steps are already a working audio server.
+
+The HTTP gateway listens on port 7090. The public API is described in
+[INTEGRATING.md](INTEGRATING.md).
+
+Spotify needs your own application: set the client id in the config, register the redirect
+`http://<server>:7090/callbacks/spotify/` (or `SPOTIFY_REDIRECT_URI`), and leave the Web
+Playback scopes off. Playback uses Soloist.
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under
+[Apache-2.0](LICENSE).

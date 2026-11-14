@@ -1,0 +1,299 @@
+import assert from 'node:assert/strict';
+import {
+  PlayerCommand,
+  Roles,
+  sendspinCore,
+  type SendspinSession,
+  type SendspinSessionHooks,
+} from '@sonn-audio/node-sendspin';
+import { test } from './testHarness';
+import { buildZoneOutputs } from '../src/adapters/outputs/factory';
+import { AudioAnalysisService, type AudioAnalysisListener } from '../src/application/audio/audioAnalysisService';
+import type { ZoneConfig } from '../src/domain/config/types';
+import type { ConfigPort } from '../src/ports/ConfigPort';
+import { makeOutputPortsFake } from './fakes/outputPorts';
+
+const CORE_METHODS = [
+  'getVisualizerSupport',
+  'sendVisualizerStreamStartV1',
+  'sendVisualizerLoudness',
+  'sendStreamStart',
+  'sendStreamEnd',
+  'endPlaybackStreams',
+  'sendStreamClear',
+  'sendPcmFrameToClient',
+] as const;
+
+const LIGHT_SUPPORT = { types: ['loudness'], rate_max: 30 };
+
+/**
+ * Stub the Sendspin core: only the clients in `visualizers` declare visualizer@v1, and every call
+ * is recorded as `[method, clientId]`.
+ */
+function stubCore(visualizers: string[]): { calls: Array<[string, unknown]>; restore: () => void } {
+  const calls: Array<[string, unknown]> = [];
+  const core = sendspinCore as unknown as Record<string, unknown>;
+  const saved = new Map<string, unknown>();
+  for (const name of CORE_METHODS) {
+    saved.set(name, Object.getOwnPropertyDescriptor(core, name) ? core[name] : undefined);
+    core[name] = (clientId: unknown) => {
+      calls.push([name, clientId]);
+      if (name === 'getVisualizerSupport') {
+        return visualizers.includes(clientId as string) ? LIGHT_SUPPORT : null;
+      }
+      return undefined;
+    };
+  }
+  return {
+    calls,
+    restore: () => {
+      for (const name of CORE_METHODS) {
+        const had = saved.get(name);
+        if (had === undefined) delete core[name];
+        else core[name] = had;
+      }
+    },
+  };
+}
+
+function makeZone(): ZoneConfig {
+  return {
+    id: 1,
+    name: 'Sauna',
+    sourceMac: '00:11:22:33:44:01',
+    transports: [{ id: 'sendspin', clientId: 'sauna-audio', satellites: ['sauna-licht'] } as never],
+    volumes: {
+      default: 30,
+      alarm: 50,
+      fire: 50,
+      bell: 50,
+      buzzer: 50,
+      tts: 50,
+      volstep: 2,
+      fading: 0,
+      maxVolume: 100,
+    },
+    inputs: {
+      airplay: { enabled: false },
+      spotify: { enabled: false },
+      musicassistant: { enabled: false },
+      lineIn: { enabled: false },
+    },
+  };
+}
+
+interface Harness {
+  output: Record<string, unknown> & {
+    setupVisualizer(isPcm: boolean, sampleRate: number, channels: number, bitDepth: number): void;
+    teardown(): void;
+  };
+  listeners: AudioAnalysisListener[];
+  /** Server commands sent to each client's session, as `[clientId, command]`. */
+  commands: Array<[string, unknown]>;
+  connect(clientId: string, roles?: string[]): void;
+  disconnect(clientId: string): void;
+  /** The client's visualizer changed its stream config (rc1 client/state). */
+  visualizerChanged(clientId: string): void;
+}
+
+function build(): Harness {
+  const ports = makeOutputPortsFake({} as ConfigPort);
+  const listeners: AudioAnalysisListener[] = [];
+  ports.audioAnalysis = new AudioAnalysisService((_options, listener) => {
+    listeners.push(listener);
+    return { push: () => {} };
+  });
+  const hooks = new Map<string, SendspinSessionHooks>();
+  const sessions = new Map<string, SendspinSession>();
+  ports.sendspinHooks = {
+    register: (clientId, clientHooks) => {
+      hooks.set(clientId, clientHooks);
+      return () => {};
+    },
+  };
+  const outputs = buildZoneOutputs(makeZone(), ports);
+  const output = outputs.find((o) => o.type === 'sendspin') as unknown as Harness['output'];
+  const commands: Array<[string, unknown]> = [];
+  const sessionFor = (clientId: string, roles: string[] = [Roles.VISUALIZER]): SendspinSession => {
+    let session = sessions.get(clientId);
+    if (!session) {
+      session = {
+        getClientId: () => clientId,
+        getRoles: () => roles,
+        getLastGoodbyeReason: () => null,
+        sendServerCommand: (command: unknown) => commands.push([clientId, command]),
+      } as unknown as SendspinSession;
+      sessions.set(clientId, session);
+    }
+    return session;
+  };
+  return {
+    output,
+    listeners,
+    commands,
+    connect: (clientId, roles) => hooks.get(clientId)?.onIdentified?.(sessionFor(clientId, roles), null),
+    disconnect: (clientId) => hooks.get(clientId)?.onDisconnected?.(sessionFor(clientId)),
+    visualizerChanged: (clientId) =>
+      hooks.get(clientId)?.onVisualizerFormatChanged?.(sessionFor(clientId), {} as never),
+  };
+}
+
+const loudnessTargets = (calls: Array<[string, unknown]>): unknown[] =>
+  calls.filter(([name]) => name === 'sendVisualizerLoudness').map(([, clientId]) => clientId);
+
+test('a satellite that declares visualizer@v1 is sent frames when the speaker declares none', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, listeners, connect } = build();
+    connect('sauna-licht');
+    output.setupVisualizer(true, 48000, 2, 16);
+
+    assert.ok(core.calls.some(([name, id]) => name === 'sendVisualizerStreamStartV1' && id === 'sauna-licht'));
+    assert.equal(listeners.length, 1, 'one analyzer, for the one client that asked');
+    listeners[0]!({ type: 'loudness', value: 0.5, timestampUs: 1 } as never);
+    assert.deepEqual(loudnessTargets(core.calls), ['sauna-licht']);
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('the speaker and a satellite that both ask each get their own frames', () => {
+  const core = stubCore(['sauna-audio', 'sauna-licht']);
+  try {
+    const { output, listeners, connect } = build();
+    connect('sauna-licht');
+    output.setupVisualizer(true, 48000, 2, 16);
+
+    assert.equal(listeners.length, 2);
+    for (const listener of listeners) {
+      listener({ type: 'loudness', value: 0.5, timestampUs: 1 } as never);
+    }
+    assert.deepEqual(loudnessTargets(core.calls).sort(), ['sauna-audio', 'sauna-licht']);
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('a satellite that joins a running stream is asked, and is let go when it leaves', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, listeners, connect, disconnect } = build();
+    output.setupVisualizer(true, 48000, 2, 16);
+    assert.equal(listeners.length, 0, 'nobody connected has asked yet');
+
+    // A running stream, as the satellite's late-join sees it.
+    output.playbackState = 'playing';
+    output.isOwner = () => true;
+    output.activeOutputFormat = { codec: 'pcm', sampleRate: 48000, channels: 2, bitDepth: 16 };
+    connect('sauna-licht');
+    assert.ok(core.calls.some(([name, id]) => name === 'sendVisualizerStreamStartV1' && id === 'sauna-licht'));
+    assert.equal(listeners.length, 1);
+
+    disconnect('sauna-licht');
+    assert.equal((output.analysisSubscriptions as Map<string, unknown>).size, 0);
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('a satellite gets no visualizer stream when the zone is not playing PCM', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, listeners, connect } = build();
+    connect('sauna-licht');
+    output.setupVisualizer(false, 48000, 2, 16);
+    assert.equal(listeners.length, 0);
+    assert.ok(!core.calls.some(([name]) => name === 'sendVisualizerStreamStartV1'));
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+/** Put the zone in a running PCM stream, as a satellite's late-join sees it. */
+function playPcm(output: Harness['output']): void {
+  output.setupVisualizer(true, 48000, 2, 16);
+  output.playbackState = 'playing';
+  output.isOwner = () => true;
+  output.activeOutputFormat = { codec: 'pcm', sampleRate: 48000, channels: 2, bitDepth: 16 };
+}
+
+const PLAYER_TRAFFIC = ['sendStreamStart', 'sendPcmFrameToClient', 'sendStreamClear'];
+
+test('a satellite that only declared visualizer@v1 gets frames but no audio, volume or delay', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, commands, connect } = build();
+    playPcm(output);
+    connect('sauna-licht', [Roles.VISUALIZER]);
+    (output.setVolume as (level: number) => void)(40);
+    (output.endClientStreams as () => void)();
+
+    assert.ok(core.calls.some(([name, id]) => name === 'sendVisualizerStreamStartV1' && id === 'sauna-licht'));
+    assert.deepEqual(
+      core.calls.filter(([name, id]) => id === 'sauna-licht' && PLAYER_TRAFFIC.includes(name)),
+      [],
+    );
+    // Paused, it is told to end its visualizer stream (and only its playback streams).
+    assert.ok(core.calls.some(([name, id]) => name === 'endPlaybackStreams' && id === 'sauna-licht'));
+    assert.deepEqual(commands, []);
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('a satellite that declared player@v1 still gets the stream, volume and its delay', () => {
+  const core = stubCore([]);
+  try {
+    const { output, commands, connect } = build();
+    playPcm(output);
+    connect('sauna-licht', [Roles.PLAYER]);
+    (output.setVolume as (level: number) => void)(40);
+
+    assert.ok(core.calls.some(([name, id]) => name === 'sendStreamStart' && id === 'sauna-licht'));
+    const sent = commands.filter(([id]) => id === 'sauna-licht').map(([, command]) => command);
+    assert.ok(sent.includes(PlayerCommand.SET_STATIC_DELAY));
+    assert.ok(sent.includes(PlayerCommand.VOLUME));
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('an rc1 visualizer that changes its request mid-stream is fed the new one', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, listeners, connect, visualizerChanged } = build();
+    playPcm(output);
+    connect('sauna-licht');
+    assert.equal(listeners.length, 1);
+
+    visualizerChanged('sauna-licht');
+    assert.equal(listeners.length, 2, 'the analyzer is set up again for what the client asks now');
+    assert.equal((output.analysisSubscriptions as Map<string, unknown>).size, 1, 'the old one is let go');
+    assert.equal(
+      core.calls.filter(([name, id]) => name === 'sendVisualizerStreamStartV1' && id === 'sauna-licht').length,
+      2,
+    );
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});
+
+test('a visualizer change from a client nobody is feeding starts nothing', () => {
+  const core = stubCore(['sauna-licht']);
+  try {
+    const { output, listeners, connect, visualizerChanged } = build();
+    connect('sauna-licht');
+    visualizerChanged('sauna-licht');
+    assert.equal(listeners.length, 0);
+    output.teardown();
+  } finally {
+    core.restore();
+  }
+});

@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spotify</title>
+<p>Returning to Audioserver…</p>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var stateFromQuery = params.get('state') || '';
+  var redirectUrl = '';
+  try {
+    redirectUrl = decodeURIComponent(stateFromQuery);
+  } catch (err) {
+    redirectUrl = stateFromQuery;
+  }
+  var code = params.get('code') || '';
+  var error = params.get('error') || '';
+  if (!redirectUrl || (!code && !error)) {
+    document.body.textContent = 'Missing redirect information.';
+    return;
+  }
+  var joiner = redirectUrl.indexOf('?') >= 0 ? '&' : '?';
+  var extra = [];
+  if (code) extra.push('code=' + encodeURIComponent(code));
+  if (error) extra.push('error=' + encodeURIComponent(error));
+  location.replace(redirectUrl + joiner + extra.join('&'));
+})();
+</script>

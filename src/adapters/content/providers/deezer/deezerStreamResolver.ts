@@ -1,0 +1,33 @@
+import type { StreamProvider } from '@/adapters/content/StreamProvider';
+import { createLogger } from '@/shared/logging/logger';
+import type { PlaybackSource } from '@/ports/EngineTypes';
+import type { DeezerStreamService } from '@/adapters/content/providers/deezer/deezerStreamService';
+
+export class DeezerStreamResolver implements StreamProvider {
+  public readonly provider = 'deezer';
+
+  private readonly log = createLogger('Audio', 'DeezerStream');
+
+  constructor(private readonly streamService: DeezerStreamService) {}
+
+  public configure(): void {
+    try {
+      this.streamService.configureFromConfig();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log.warn('deezer stream config failed', { message });
+    }
+  }
+
+  public isProvider(providerId: string): boolean {
+    return this.streamService.isDeezerProvider(providerId);
+  }
+
+  public async startStreamForAudiopath(
+    zoneId: number | undefined,
+    audiopath: string,
+    options?: { suppressErrors?: boolean },
+  ): Promise<{ playbackSource: PlaybackSource | null; outputOnly?: boolean }> {
+    return this.streamService.startStreamForAudiopath(zoneId, audiopath, options);
+  }
+}

@@ -1,0 +1,139 @@
+import type { PlaybackMetadata } from '@/ports/types/playback';
+import type { ZoneAudioHelpers } from '@/application/zones/internal/zoneAudioHelpers';
+import type { ParentContext } from '@/application/zones/policies/ParentContextPolicy';
+import type { ResolvedPlayRequest } from '@/application/zones/playback/types';
+
+export type ResolvePlayRequestDeps = {
+  audioHelpers: ZoneAudioHelpers;
+  parseParentContext: (uri: string, opts?: {
+    providerForAudiopath: (audiopath: string) => string | null;
+  }) => ParentContext | null;
+  classifyIsRadio: (args: {
+    uri: string;
+    resolvedTarget: string;
+    metadata?: PlaybackMetadata;
+  }) => boolean;
+  decodeAudiopath: (path: string) => string;
+  encodeAudiopath: (originalUri: string, itemType?: string, providerPrefix?: string, useBase64?: boolean) => string;
+  normalizeSpotifyAudiopath: (path: string) => string;
+  sanitizeStation: (station: string, target: string) => string;
+  providerForAudiopath: (audiopath: string) => string | null;
+  getMusicAssistantProviderId: () => string;
+};
+
+export function resolvePlayRequest(args: {
+  uri: string;
+  type: string;
+  metadata?: PlaybackMetadata;
+  deps: ResolvePlayRequestDeps;
+}): ResolvedPlayRequest {
+  const { uri, type, metadata, deps } = args;
+  const {
+    audioHelpers,
+    parseParentContext,
+    classifyIsRadio,
+    decodeAudiopath,
+    encodeAudiopath,
+    normalizeSpotifyAudiopath,
+    sanitizeStation,
+    providerForAudiopath,
+  } = deps;
+
+  const parentContext = parseParentContext(uri, { providerForAudiopath });
+  // Any streaming service keeps the uri as-is; only everything else is decoded.
+  const uriProvider = audioHelpers.providerForAudiopath(uri);
+  let resolvedTarget = parentContext?.parent ?? (uriProvider ? uri : decodeAudiopath(uri));
+  let stationUri = parentContext?.parent ? normalizeSpotifyAudiopath(parentContext.parent) : '';
+  let normalizedTarget = normalizeSpotifyAudiopath(resolvedTarget);
+  const isMusicAssistantInitial = audioHelpers.isMusicAssistantAudiopath(uri) ||
+    audioHelpers.isMusicAssistantAudiopath(resolvedTarget);
+  let queueAudiopath = isMusicAssistantInitial ? normalizeSpotifyAudiopath(uri) : normalizedTarget;
+  if (isMusicAssistantInitial && parentContext?.parent) {
+    const providerPrefix = queueAudiopath.split(':')[0] || deps.getMusicAssistantProviderId();
+    const parentType = /playlist/i.test(parentContext.parent)
+      ? 'playlist'
+      : /album/i.test(parentContext.parent)
+        ? 'album'
+        : /artist/i.test(parentContext.parent)
+          ? 'artist'
+          : 'track';
+    const wrappedParent = encodeAudiopath(parentContext.parent, parentType, providerPrefix);
+    resolvedTarget = wrappedParent;
+    normalizedTarget = normalizeSpotifyAudiopath(resolvedTarget);
+    stationUri = normalizeSpotifyAudiopath(resolvedTarget);
+    queueAudiopath = normalizeSpotifyAudiopath(uri);
+  }
+  const isMusicAssistant = audioHelpers.isMusicAssistantAudiopath(queueAudiopath) ||
+    audioHelpers.isMusicAssistantAudiopath(resolvedTarget);
+  // Either path may be the one carrying the service, so ask for both and keep the first answer.
+  const owner =
+    audioHelpers.providerForAudiopath(queueAudiopath) ??
+    audioHelpers.providerForAudiopath(resolvedTarget);
+  const isSpotify = audioHelpers.isSpotifyAudiopath(queueAudiopath);
+  const nextInput = isSpotify
+    ? 'spotify'
+    : isMusicAssistant
+      ? 'musicassistant'
+      : 'queue';
+
+  let stationValue =
+    parentContext?.parent && isMusicAssistant
+      ? parentContext.parent
+      : parentContext?.parent
+        ? sanitizeStation(parentContext.parent, normalizedTarget)
+        : stationUri;
+  const isRadio = classifyIsRadio({ uri, resolvedTarget, metadata });
+  if (isRadio && !stationValue && metadata?.station?.trim()) {
+    stationValue = metadata.station.trim();
+  }
+  if (isRadio && !stationValue && metadata?.title?.trim()) {
+    stationValue = metadata.title.trim();
+  }
+  if (isRadio && !stationValue) {
+    stationValue =
+      audioHelpers.deriveRadioStationLabel(resolvedTarget) ??
+      audioHelpers.deriveRadioStationLabel(uri) ??
+      '';
+  }
+  if (isRadio && stationValue && stationValue.toLowerCase().startsWith('radioparadise:')) {
+    stationValue = audioHelpers.deriveRadioStationLabel(stationValue) ?? stationValue;
+  }
+
+  const queueSourcePath = owner === 'applemusic' && parentContext?.parent ? parentContext.parent : uri;
+  const targetForQueueBuild = normalizeSpotifyAudiopath(resolvedTarget || '');
+  const shouldLimitQueueBuild = Boolean(
+    targetForQueueBuild && /(library-)?(album|playlist|artist):/i.test(targetForQueueBuild),
+  );
+  // Grow initial window to cover parentContext.startIndex so the requested track
+  // is in the loaded queue. Without this, an out-of-window startIndex gets clamped
+  // to the last loaded item and the wrong track plays. (issue #200)
+  const startIndexForLimit = parentContext?.startIndex ?? 0;
+  const queueBuildLimit = shouldLimitQueueBuild
+    ? Math.max(50, Math.ceil((startIndexForLimit + 1) / 50) * 50)
+    : undefined;
+  const isLineIn = type === 'linein';
+
+  return {
+    uri,
+    type,
+    metadata,
+    parentContext,
+    hasParentContext: Boolean(parentContext),
+    resolvedTarget,
+    normalizedTarget,
+    stationUri,
+    queueAudiopath,
+    isMusicAssistantInitial,
+    isMusicAssistant,
+    provider: owner,
+    isSpotify,
+    nextInput,
+    stationValue,
+    isRadio,
+    queueSourcePath,
+    targetForQueueBuild,
+    shouldLimitQueueBuild,
+    queueBuildLimit,
+    isLineIn,
+  };
+}
