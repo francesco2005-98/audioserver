@@ -21,6 +21,7 @@ import { createStreamProviders } from '@/runtime/streamProviders';
 import { createApiZoneResolvers } from '@/runtime/apiZoneResolvers';
 import { HttpService } from '@/adapters/http';
 import { LoxoneHttpService } from '@/adapters/loxone/http';
+import { notifyMiniserverStartup } from '@/adapters/loxone/miniserverStartup';
 import { LoxoneCommandProcessor } from '@/adapters/loxone/http/commandProcessor';
 import { BrowserZoneRegistry } from '@/application/zones/browserZoneRegistry';
 import { createInputsAdapter } from '@/adapters/inputs/InputsAdapter';
@@ -43,7 +44,6 @@ import { AudioMeter } from '@/application/audio/audioMeter';
 import type { ApiOutputCapabilities } from '@/domain/zones/apiTypes';
 import { createZoneManager, type ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import { resolveZoneOutputProtocol } from '@/application/zones/outputProtocol';
-import type { AudioServerConfig } from '@/domain/config/types';
 import { PlaybackService } from '@/application/playback/PlaybackService';
 import { AirplayInputService } from '@/adapters/inputs/airplay/airplayInputService';
 import { LineInMetadataService } from '@/adapters/inputs/linein/lineInMetadataService';
@@ -597,6 +597,11 @@ export function createRuntime(): Runtime {
         fadeController: fadeControllerPort,
         alerts: alertsPort,
         contentManager,
+        onConfigured: () => {
+          serverHeartbeat.emit(configPort);
+          loxoneService?.refreshAnnouncement();
+          void notifyMiniserverStartup(configPort.getConfig());
+        },
       });
     }
 
@@ -616,6 +621,7 @@ export function createRuntime(): Runtime {
         zoneManager,
         configPort,
         groupSync: groupManager,
+        mdns: mdnsService,
       });
       loxoneService = service;
       try {
@@ -637,7 +643,7 @@ export function createRuntime(): Runtime {
           cfg.system.audioserver.loxoneEnabled = true;
         });
       }
-      await notifyMiniserverStartup(storedConfig);
+      await notifyMiniserverStartup(configPort.getConfig());
       log.info('loxone subsystem enabled');
     }
 
@@ -949,90 +955,4 @@ export function createRuntime(): Runtime {
     },
     stop: stopServices,
   };
-}
-
-async function notifyMiniserverStartup(config: AudioServerConfig): Promise<void> {
-  const log = createLogger('Server');
-  const miniserverIp = config.system?.miniserver?.ip?.trim();
-  const macId = config.system?.audioserver?.macId?.trim().toUpperCase();
-
-  if (!miniserverIp || !macId) {
-    log.debug('miniserver startup ping skipped (missing ip/mac)');
-    return;
-  }
-
-  const section = findServerSection(config.rawAudioConfig?.raw, macId)
-    ?? findServerSection(config.rawAudioConfig?.rawString, macId);
-  const uuid = normalizeString(section?.uuid);
-
-  if (!uuid) {
-    log.debug('miniserver startup ping skipped (missing uuid)', { macId });
-    return;
-  }
-
-  const url = `http://${miniserverIp}/dev/sps/devicestartup/${encodeURIComponent(uuid)}`;
-  const controller = new AbortController();
-  const scheduleTimeout = globalThis.setTimeout as typeof setTimeout;
-  const timeout = scheduleTimeout(() => controller.abort(), 4000);
-
-  try {
-    const response = await fetch(url, { method: 'GET', signal: controller.signal });
-    if (!response.ok) {
-      log.warn('miniserver startup ping failed', { status: response.status, url });
-    } else {
-      log.info('miniserver startup ping sent', { url });
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log.warn('miniserver startup ping failed', { message, url });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function findServerSection(raw: unknown, macId: string): Record<string, unknown> | undefined {
-  if (!raw || !macId) {
-    return undefined;
-  }
-
-  const normalizedMacId = macId.trim().toUpperCase();
-  let parsed = raw;
-
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      return undefined;
-    }
-  }
-
-  if (!Array.isArray(parsed)) {
-    return undefined;
-  }
-
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== 'object') {
-      continue;
-    }
-    const matchKey = Object.keys(entry).find(
-      (key) => key.trim().toUpperCase() === normalizedMacId,
-    );
-    if (matchKey) {
-      return (entry as Record<string, unknown>)[matchKey] as Record<string, unknown>;
-    }
-  }
-
-  return undefined;
-}
-
-function normalizeString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
 }

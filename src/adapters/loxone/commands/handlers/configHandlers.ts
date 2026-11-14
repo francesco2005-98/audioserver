@@ -1,4 +1,5 @@
 import {
+  createSign,
   generateKeyPairSync,
   privateDecrypt,
   constants as cryptoConstants,
@@ -44,6 +45,8 @@ type ConfigHandlerOptions = {
   configPort: ConfigPort;
   contentManager: ContentManager;
   spotifyInputService: SpotifyInputService;
+  /** Fired after a Miniserver config was stored, so the heartbeat and the startup ping can run. */
+  onConfigured?: () => void;
 };
 
 /**
@@ -137,9 +140,12 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
         raw: parsed,
         rawString: decoded,
       });
+      options.onConfigured?.();
 
       const info = configService.getCurrentConfigInfo();
-      return buildEmptyResponseWithPayload(command, {
+      // The name has to stay "setconfig". Taking the last URL segment would name
+      // the result after the base64 body, and the Miniserver would not see the checksum.
+      return buildResponse(command, 'setconfig', {
         crc32: crc32 ?? info.crc32 ?? null,
         extensions: info.extensions ?? [],
       });
@@ -378,20 +384,54 @@ function exportPublicKeyPemSpki(): string {
   return cachedPublicPemSpki;
 }
 
-export function decryptWithAudioCfgKey(cipherBase64: string | undefined): string | null {
-  if (!cipherBase64) {
-    return null;
-  }
+/** Public key handed to a Loxone client during secure/hello. Not the key the client just sent. */
+export function loxoneServerPublicKeyPem(): string {
+  return createKeyMaterial().publicKeyPem;
+}
+
+/**
+ * Session JWT whose expiry is in the future and whose session_token matches the
+ * identification line. The previous token expired in December 2021.
+ */
+export function signLoxoneSessionJwt(sessionToken: string): string {
+  const { privateKey } = ensureKeyPair();
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      exp: now + 60 * 60 * 24 * 365 * 10,
+      iat: now,
+      session_token: sessionToken,
+      sub: 'secure-session-init-success',
+    }),
+  ).toString('base64url');
+  const data = `${header}.${payload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(data);
+  signer.end();
+  const signature = signer.sign(privateKey).toString('base64url');
+  return `${data}.${signature}`;
+}
+
+function ensureKeyPair(): { publicKey: KeyObject; privateKey: KeyObject } {
   if (!keyPair) {
     keyPair = generateKeyPairSync('rsa', {
       modulusLength: 2048,
       publicExponent: 0x10001,
     });
   }
+  return keyPair;
+}
+
+export function decryptWithAudioCfgKey(cipherBase64: string | undefined): string | null {
+  if (!cipherBase64) {
+    return null;
+  }
+  const keys = ensureKeyPair();
   try {
     const decrypted = privateDecrypt(
       {
-        key: keyPair.privateKey,
+        key: keys.privateKey,
         padding: cryptoConstants.RSA_PKCS1_PADDING,
       },
       Buffer.from(cipherBase64, 'base64'),

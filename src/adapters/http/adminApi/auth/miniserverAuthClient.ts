@@ -424,11 +424,16 @@ export class MiniserverAuthClient {
 
   private async fetchText(baseUrl: string, command: string): Promise<string> {
     const url = `${baseUrl.replace(/\/+$/, '')}/${command.replace(/^\/+/, '')}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    timeout.unref?.();
     let res: Response;
     try {
-      res = await fetch(url, { method: 'GET' });
+      res = await fetch(url, { method: 'GET', signal: controller.signal });
     } catch {
       throw new MiniserverAuthError('miniserver-unreachable', 'miniserver request failed');
+    } finally {
+      clearTimeout(timeout);
     }
     const text = await res.text().catch(() => '');
     if (res.status === 401 || res.status === 403) {

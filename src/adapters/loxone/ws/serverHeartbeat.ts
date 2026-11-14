@@ -74,11 +74,45 @@ function computeHeartbeatPayload(
   ];
 }
 
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+
 export class ServerHeartbeat {
   private readonly log = createLogger('LoxoneHttp', 'Heartbeat');
   private readonly heartbeatStart = Date.now();
+  private timer: NodeJS.Timeout | null = null;
+  private configPort: ConfigPort | null = null;
 
-  constructor(private readonly registry: ConnectionRegistry) {}
+  constructor(
+    private readonly registry: ConnectionRegistry,
+    private readonly intervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
+  ) {}
+
+  /**
+   * Repeats the hardware event for as long as the Loxone listeners are up.
+   * A single burst when the socket opens is not enough: pairing usually
+   * finishes after that, and the Miniserver treats a silent device as offline.
+   */
+  public start(configPort: ConfigPort): void {
+    this.configPort = configPort;
+    this.emit(configPort);
+    if (this.timer) {
+      return;
+    }
+    this.timer = setInterval(() => {
+      if (this.configPort) {
+        this.emit(this.configPort);
+      }
+    }, this.intervalMs);
+    this.timer.unref?.();
+  }
+
+  public stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.configPort = null;
+  }
 
   public emit(configPort: ConfigPort): void {
     try {
