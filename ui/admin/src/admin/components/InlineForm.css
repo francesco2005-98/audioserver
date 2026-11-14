@@ -1,0 +1,345 @@
+.inline-form {
+  background: color-mix(in srgb, var(--ink) 1.5%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ink) 14%, transparent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  animation: inline-form-in 0.35s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+@keyframes inline-form-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1200px;
+  }
+}
+
+.inline-form__head {
+  padding: 18px 22px 6px;
+}
+
+.inline-form__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.8px;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.inline-form__eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.inline-form__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.inline-form__desc {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.inline-form__body {
+  padding: 14px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inline-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inline-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inline-form__field-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.inline-form__field-optional {
+  color: var(--text-faint);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 6px;
+  font-size: var(--fs-2xs);
+}
+
+.inline-form input.inline-form__input,
+.inline-form__input {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  transition: border-color 0.15s, background 0.15s;
+  outline: none;
+  width: 100%;
+}
+
+.inline-form__input.is-mono,
+.inline-form input.inline-form__input.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: -0.1px;
+}
+
+.inline-form__input:focus {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.inline-form__input::placeholder {
+  color: var(--text-dim);
+}
+
+.inline-form__help {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.inline-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.inline-form__grid--uneven {
+  grid-template-columns: 3fr 2fr;
+}
+
+/* Group section labels — quietly divide the form into Connection / Access / ... */
+.inline-form__group-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 2px;
+  color: var(--text-faint);
+  font-weight: 700;
+  text-transform: uppercase;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  margin-top: 2px;
+}
+
+.inline-form__group-label:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+/* Access block dims when guest toggle is on (credentials irrelevant) */
+.inline-form__access {
+  transition: opacity 0.2s;
+}
+
+.inline-form__access.is-dimmed {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Toggle row — replaces a checkbox with a labeled pill switch */
+.inline-form__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inline-form__toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+}
+
+.inline-form__toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--white);
+  transition: transform 0.25s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shade) 30%, transparent);
+}
+
+.inline-form__toggle.is-on {
+  background: var(--accent);
+}
+
+.inline-form__toggle.is-on::after {
+  transform: translateX(16px);
+}
+
+.inline-form__toggle:hover {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.inline-form__toggle.is-on:hover {
+  background: var(--accent-bright);
+}
+
+.inline-form__toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.inline-form__toggle-title {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.inline-form__toggle-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* Advanced disclosure — collapsible section using CSS grid trick */
+.inline-form__adv-toggle {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: color 0.15s, border-color 0.15s;
+  min-height: 0;
+}
+
+.inline-form__adv-toggle:hover {
+  color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.inline-form__adv-toggle svg {
+  transition: transform 0.25s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.inline-form__adv-toggle.is-open {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.inline-form__adv-toggle.is-open svg {
+  transform: rotate(90deg);
+}
+
+.inline-form__adv-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.inline-form__adv-panel.is-open {
+  grid-template-rows: 1fr;
+}
+
+.inline-form__adv-inner {
+  overflow: hidden;
+}
+
+.inline-form__adv-inner > div {
+  padding-top: 14px;
+}
+
+.inline-form__foot {
+  padding: 14px 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  margin-top: 4px;
+}
+
+.inline-form__btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 1.8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--text-muted);
+}
+
+.inline-form__btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.inline-form__btn.is-primary {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+}
+
+.inline-form__btn.is-primary:hover:not(:disabled) {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: var(--accent-on);
+  transform: translateY(-1px);
+}
+
+.inline-form__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

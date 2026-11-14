@@ -1,0 +1,762 @@
+.shell {
+  position: relative;
+  z-index: 2;
+  /* The shell is the outer frame: it sits a little wider than the content inside
+     it (--workspace-max) so the page chrome keeps its margin. */
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 32px var(--workspace-gutter) 40px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: padding 0.6s var(--spring);
+}
+
+.success-pulse {
+  position: fixed;
+  left: 50%;
+  top: 35%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--border-accent) 0%, transparent 60%);
+}
+
+body.is-success:not(.is-workspace) .success-pulse {
+  animation: success-pulse 1.2s var(--spring) forwards;
+}
+
+body.is-workspace .success-pulse {
+  animation: workspace-pulse 1.2s var(--spring) forwards;
+}
+
+@keyframes success-pulse {
+  0%   { opacity: 0; width: 100px; height: 100px; }
+  40%  { opacity: 1; }
+  100% { opacity: 0; width: 1400px; height: 1400px; }
+}
+
+@keyframes workspace-pulse {
+  0%   { opacity: 0; width: 100px; height: 100px; }
+  40%  { opacity: 1; }
+  100% { opacity: 0; width: 1400px; height: 1400px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .success-pulse {
+    animation: none !important;
+  }
+}
+
+body.is-success .shell {
+  padding-top: 20px;
+}
+
+body.is-workspace .shell {
+  padding-top: 14px;
+}
+
+.top-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 24px;
+  transition: padding 0.6s var(--spring);
+  animation: shell-fade 0.6s ease backwards;
+  animation-delay: 1.9s;
+}
+
+body.is-success .top-strip {
+  padding-bottom: 14px;
+}
+
+body.is-workspace .top-strip {
+  padding-bottom: 8px;
+}
+
+@keyframes shell-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+body.is-workspace #app {
+  animation: workspace-entry 0.7s var(--spring) backwards;
+  animation-delay: 0.35s;
+}
+
+@keyframes workspace-entry {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.is-workspace #app {
+    animation: none;
+  }
+}
+
+.top-strip__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.top-strip__version {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+/*
+ * The strip is a row of labels now, not a row of pills.
+ *
+ * It had grown five capsules — the server, the update notice, github, docs and the account — each with
+ * its own fill and its own hairline outline, on the one horizontal band this product shares with both
+ * players. Their bar is bare mono labels at 10px on 0.2em, muted until you point at them, with a single
+ * hairline where the kind of thing changes; this is the same row doing the same job, so it is built the
+ * same way. What is *not* borrowed is the identity at either end: the players open with their mark and
+ * this opens with the server's initial, because that is the fact this surface leads with.
+ *
+ * Everything that was said by a capsule's border is still said — the three system states colour the
+ * initial, the update notice keeps its amber, the account keeps its online dot — by the one element in
+ * each that was already carrying the meaning.
+ */
+.system-id {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.system-id__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+body.is-unpaired .system-id__avatar {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+
+body.is-success .system-id__avatar,
+body.is-workspace .system-id__avatar {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+/*
+ * Set exactly like `.user-pill__name` at the other end of the row.
+ *
+ * Both are *names* rather than labels — one for the server, one for whoever is signed in — so neither is
+ * engraved into uppercase the way `github` and `docs` are. The same distinction the players make between
+ * `audioserver` and `PLAYER`. They were 11px/600 and 12px/700, which is two treatments for one kind of thing on
+ * one line.
+ */
+.system-id__name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.top-strip__actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* The players' corner, to the letter: 10px mono on 0.2em, muted until pointed at. */
+.top-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.top-chip:hover {
+  color: var(--text);
+}
+
+.top-chip svg {
+  color: var(--text-dim);
+  transition: color 0.15s;
+}
+
+.top-chip:hover svg {
+  color: var(--text-muted);
+}
+
+button.top-chip {
+  cursor: pointer;
+}
+
+/*
+ * "Updates available" — the one label here with a consequence, so the one carrying colour.
+ *
+ * It was an amber capsule with an amber border on an amber wash: three ways of saying the same thing,
+ * and the loudest object in the row by some distance. The word in amber says it once. Same move as
+ * `join` in the player's rooms sheet, and the accent's job is the same on both surfaces.
+ */
+.top-chip--warn,
+.top-chip--warn svg,
+.top-chip--warn:hover {
+  color: var(--warn);
+}
+
+.top-chip--warn:hover {
+  filter: brightness(1.2);
+}
+
+/*
+ * One hairline, where the kind of thing changes.
+ *
+ * The players' corner has exactly one, between the face you can toggle and the place you navigate to.
+ * Here it stands between what is outside this product (the repository, the documentation) and what is
+ * yours (the account, the servers, the way back to the music). A pipe between every pair would be
+ * busier than the row it is meant to match.
+ */
+.top-strip__sep {
+  width: 1px;
+  height: 11px;
+  background: var(--border-strong);
+}
+
+/* Avatar + user-pill — the ball is always present; when signed in the name
+   slides out inline and the wrapper grows into a chevron-affording pill. */
+.user-pill {
+  position: relative;
+  flex-shrink: 0;
+  /* A little more air than the labels give each other, so `player` reads as its own door rather than
+     as a caption on the account beside it. */
+  margin-left: 8px;
+}
+
+.user-pill__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 3px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  transition:
+    background 0.35s,
+    border-color 0.35s,
+    padding 0.55s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+  min-height: 0;
+}
+
+/*
+ * The account, unboxed like the rest of the row.
+ *
+ * The capsule around it was doing three jobs — saying "signed in", saying "menu here", and saying "open"
+ * — and the avatar, the chevron and the name each already say one of them. So the pill goes and they
+ * keep their jobs: the name brightens when the menu is open, which is how every other open thing on this
+ * surface is marked.
+ */
+.user-pill.is-in .user-pill__trigger {
+  padding: 3px 2px 3px 3px;
+}
+
+.user-pill.is-in.is-open .user-pill__name {
+  color: var(--accent);
+}
+
+.user-pill.is-in.is-open .user-pill__chevron {
+  color: var(--accent);
+}
+
+.user-pill__trigger:disabled {
+  cursor: default;
+}
+
+.user-pill__avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: border-color 0.2s, background 0.2s, color 0.2s, transform 0.2s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.user-pill__avatar-glyph {
+  display: inline-flex;
+}
+
+.user-pill__avatar-initial {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  display: none;
+}
+
+.user-pill.is-in .user-pill__avatar {
+  background: var(--accent-soft);
+  border-color: var(--border-accent);
+  color: var(--accent);
+  animation: user-pill-unfold 0.8s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.user-pill.is-in .user-pill__avatar-glyph {
+  display: none;
+}
+
+.user-pill.is-in .user-pill__avatar-initial {
+  display: inline-block;
+}
+
+@keyframes user-pill-unfold {
+  0%   { transform: scale(0.55); opacity: 0; }
+  55%  { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.user-pill__online {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 5px var(--accent-glow);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.45s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1)) 0.3s,
+    transform 0.45s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1)) 0.3s;
+}
+
+.user-pill.is-in .user-pill__online {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Name slides out via a 0fr → 1fr grid track so it animates width smoothly. */
+.user-pill__name-wrap {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  margin-left: 0;
+  transition:
+    grid-template-columns 0.65s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    opacity 0.45s ease,
+    margin-left 0.65s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.user-pill.is-in .user-pill__name-wrap {
+  grid-template-columns: 1fr;
+  opacity: 1;
+  margin-left: 10px;
+}
+
+.user-pill__name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.user-pill__chevron {
+  color: var(--text-dim);
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-left: 0;
+  transition:
+    max-width 0.6s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    opacity 0.45s ease,
+    transform 0.3s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    margin-left 0.6s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.user-pill.is-in .user-pill__chevron {
+  max-width: 18px;
+  opacity: 1;
+  margin-left: 8px;
+}
+
+.user-pill.is-open .user-pill__chevron {
+  transform: rotate(180deg);
+}
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  background: color-mix(in srgb, var(--bg-card) 95%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--shade) 50%, transparent), 0 0 0 1px color-mix(in srgb, var(--ink) 2%, transparent);
+  padding: 4px;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  transform-origin: top right;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.25s var(--spring, cubic-bezier(0.2, 0.8, 0.2, 1));
+  z-index: 100;
+}
+
+.user-pill.is-open .user-menu {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.user-menu__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 11px 12px;
+}
+
+.user-menu__head-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  flex-shrink: 0;
+}
+
+.user-menu__head-id {
+  min-width: 0;
+}
+
+.user-menu__name {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.1px;
+  line-height: 1.2;
+}
+
+.user-menu__role {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+
+.user-menu__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+  padding: 8px 11px 6px;
+}
+
+/* Appearance segmented control */
+.user-menu__theme {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 7px 4px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.user-menu__theme-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  min-height: 0;
+}
+
+.user-menu__theme-btn:hover {
+  color: var(--text);
+}
+
+.user-menu__theme-btn.is-active {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+.user-menu__theme-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.user-menu__theme-btn:disabled:hover {
+  color: var(--text-muted);
+}
+
+.user-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-decoration: none;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.user-menu__item:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.user-menu__item svg {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.user-menu__item:hover svg {
+  color: var(--text);
+}
+
+.user-menu__item--danger {
+  color: var(--danger);
+}
+
+.user-menu__item--danger:hover {
+  color: var(--danger-bright);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.user-menu__item--danger svg {
+  color: var(--danger);
+}
+
+.user-menu__item--danger:hover svg {
+  color: var(--danger-bright);
+}
+
+.user-menu__arrow {
+  margin-left: auto;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.user-menu__divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.shell-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 28px;
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  animation: shell-fade 0.6s ease backwards;
+  animation-delay: 2.0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top-strip,
+  .shell-foot {
+    animation: none !important;
+  }
+}
+
+.shell-foot__left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.shell-foot a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.shell-foot a:hover {
+  color: var(--text-muted);
+}
+
+.shell-foot__sep {
+  opacity: 0.4;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 20px 16px;
+  }
+  .top-strip__version {
+    display: none;
+  }
+  /*
+   * On a phone the row keeps what belongs to this system and drops what points away from it.
+   *
+   * This hid everything after the first label, which was fine while the first was `github` and the rest
+   * were `docs` — and wrong the moment the way to the music joined them, since that is the one anybody
+   * would reach for on a phone. The repository and the readme are the two things nobody opens from one.
+   */
+  .top-strip__actions .top-chip:not(.top-chip--warn):not(.top-chip--player) {
+    display: none;
+  }
+
+  /* Nothing left on its far side to separate. */
+  .top-strip__sep {
+    display: none;
+  }
+  .shell-foot {
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 20px;
+    font-size: var(--fs-2xs);
+    text-align: center;
+  }
+  .shell-foot__left {
+    justify-content: center;
+  }
+}
+
+/* ---- Audioserver switcher (user menu) ---- */
+.server-switch__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.server-switch__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  transition: background 0.12s, color 0.12s;
+}
+.server-switch__item:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface);
+}
+.server-switch__item.is-current {
+  cursor: default;
+  color: var(--text);
+}
+.server-switch__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-faint);
+}
+.server-switch__item.is-current .server-switch__dot {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent-glow);
+}
+.server-switch__name {
+  flex: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-switch__host {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--text-dim);
+}
+.server-switch__tag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}

@@ -1,0 +1,6018 @@
+/*
+ * The art player's look: the Audioserver Console language, on the public API.
+ *
+ * Ported from the design handoff (`data/handoff_audioserver_console`), whose whole argument is restraint:
+ * black dominates, the artwork is the only colour moment, hierarchy comes from typography and
+ * hairlines, and nothing is boxed. The values below — the text ladder, the 1px hairline, the 2px
+ * fader rails, the type sizes — are that spec rather than an interpretation of it.
+ *
+ * **Everything is scoped under `.cx-root`.** The technical player owns `:root`, so the two faces live
+ * in one bundle without either leaning on the other's tokens: this face's near-black, its text
+ * ladder and its own eased transitions apply inside its shell and stop at the edge of it. The one
+ * thing it deliberately *does* inherit is the product: the two brand faces and the green accent come
+ * from `styles.css`, because a second accent is how a system stops looking like one system.
+ *
+ * The handoff sets the accent to a neutral `#C9CDD4`; here it is the product's green, used with the
+ * handoff's discipline (the live mark, the active room, the timeline, one small chip) rather than as
+ * a colour scheme. Volume fills stay neutral — a fader is furniture, not a state.
+ */
+
+/*
+ * The sleeve's size, registered so the desk can *grow into* the picture instead of cutting to it.
+ *
+ * A plain custom property does not interpolate, so `--cx-cover-size` jumping from the composition's
+ * 620px to the canvas's 78vh would be a hard swap of the biggest object on the screen while everything
+ * around it takes 1.4s to fade — the one frame that would make the whole state read as a page change
+ * rather than as a room settling. Registered as a `<length>`, `transition: --cx-cover-size` is legal,
+ * and the sleeve, its bloom and the far halo all glide together because all three read this one value.
+ */
+@property --cx-cover-size {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+.cx-root {
+  /* Silver: what a control surface is when it is not saying anything. The sleeve is the only colour
+     on this face, and green is only ever a verdict. */
+  --g: #d4d6da;
+  --gb: #e6e7ea;
+  --gon: #0a0a0b;
+
+  /* the only surface */
+  --cx-bg: #0a0a0c;
+  --cx-surface: rgb(13 13 15 / 97%);
+  --cx-cover: #15161a;
+
+  /* the text ladder, held strictly — eight steps, and no colour picks its own grey */
+  --t1: #f7f8fa;
+  --t2: #edeef0;
+  --t3: #c7cdd5;
+  --t4: #9ca3af;
+  --t5: #8a93a0;
+  --t6: #6b7280;
+  --t7: #4a5058;
+  --t8: #3f444c;
+
+  --hair: rgb(255 255 255 / 7%);
+  --hair-soft: rgb(255 255 255 / 4.5%);
+  --track: rgb(255 255 255 / 12%);
+
+  --cx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--cx-bg);
+  color: var(--t2);
+  font-family: var(--font-sans);
+  /* A player is a control surface: dragging a fader must not select the label beside it. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cx-root input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * The button reset, at *zero* specificity beyond the scope.
+ *
+ * `:where()` is load-bearing, not a style: written as `.cx-root button` this rule is a class plus a
+ * type selector, which outranks every single-class rule below it — so `.cx-play-btn { background }`
+ * lost to `background: none` and the play pill rendered as bare text, and every artwork tile lost
+ * its placeholder fill the same way. `:where(button)` contributes nothing, leaving these at the same
+ * weight as the component rules, where source order decides and the reset comes first.
+ */
+.cx-root :where(button) {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  /*
+   * `text-transform: inherit` is load-bearing and `font: inherit` does not cover it.
+   *
+   * The HTML spec's suggested rendering sets `text-transform: none` on form controls, and a UA rule
+   * beats an author rule of *any* specificity that does not mention the property — so a `<nav class="mono">`
+   * full of `<button>`s rendered `home  Library  Radio  inputs` in lowercase while every other mono label
+   * on the screen was engraved caps. The class was on the container, which is the normal way to write it,
+   * and the buttons quietly opted out. This is the one line that makes `.mono` mean the same thing
+   * whatever element it lands on.
+   */
+  text-transform: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* No visible scrollbars in this face: every scrolling region is content on black, and a grey slab
+   down the side of it is chrome the design does not have. */
+.cx-root *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.cx-root * {
+  scrollbar-width: none;
+}
+
+.cx-root .mono {
+  font-family: var(--font-label);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.cx-root .disp {
+  font-family: var(--font-display);
+}
+
+/* --- the artwork wash ------------------------------------------------------ */
+
+/*
+ * One dissolve slot.
+ *
+ * Two of these exist for every artwork-derived layer and they swap which one is in front on every
+ * track (see `Crossfade.tsx`).
+ *
+ * `contain: paint` for the clipping, not for a benchmark: each slot holds a 110px blur over an image
+ * inset past the viewport on all four sides, and paint containment clips that overflow to the slot's own
+ * box — which is the window — so the blur's soft edge stays off screen without relying on an ancestor's
+ * `overflow: hidden`. It also isolates each slot's paint from the other's, which is what a
+ * cross-dissolve of two blurred layers wants.
+ */
+.cx-xfade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 900ms linear;
+  contain: paint;
+}
+
+.cx-xfade[data-front] {
+  opacity: 1;
+}
+
+@keyframes cx-wash-drift {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+
+  to {
+    transform: scale(1.08) translate(1.4%, -1.1%);
+  }
+}
+
+/*
+ * Grain, over everything.
+ *
+ * Near-black is the hardest colour a screen has to hold: a 1400px gradient across it bands into visible
+ * steps, and a flat field of it reads as an absence rather than as a surface. A fixed field of fine
+ * noise at 3.5% fixes both — it dithers the banding away and gives the page the tooth of something
+ * printed, which is the difference between a dark page and a dark *room*. Static, never animated: moving
+ * grain is a film effect and this is a wall.
+ *
+ * `overlay` so it works with what is under it rather than greying it: it lifts the blacks a hair and
+ * leaves the artwork alone. Above every layer including the sleeve, because a print grain that stops at
+ * the edge of the picture is a rectangle you can see.
+ */
+.cx-root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/*
+ * Out of touch with the house, as a dot.
+ *
+ * A player whose stream has dropped is displaying the past, and pressing pause on the past is the one
+ * thing worth warning about. An amber dot with a `title` warns exactly that much and explains nothing
+ * about event streams.
+ */
+.cx-stale {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: cx-breathe 2.4s ease-in-out infinite;
+}
+
+/* --- body ----------------------------------------------------------------- */
+
+.cx-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cx-main-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cx-content-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cx-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+@keyframes cx-view-in {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+@keyframes cx-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* --- the wall: the house, one panel to a room ------------------------------ */
+
+/*
+ * Every room is a panel in one row, and the row is the window.
+ *
+ * The room you are listening in takes the width; the rest are slivers of their own artwork standing at
+ * their own place in the house's order — a record pulled halfway out of a shelf, with the others still
+ * on either side of the gap. Choosing another room is `flex-grow` moving from one panel to another,
+ * which is why the change reads as the wall *sliding* rather than as a page being replaced.
+ *
+ * This is what used to be a strip of 10px room names along the bottom edge. A multiroom server's subject
+ * is the house; the house was the least visible thing on the screen, and a name is not a picture.
+ */
+.cx-wall {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* The hairline lives between panels, so neither outside edge draws one against the window. */
+
+.cx-wall-room {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cx-house-plus {
+  font-style: normal;
+  color: var(--t7);
+}
+
+.cx-house-lit {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--g);
+}
+
+/*
+ * Resting on the house: every room the same width, each showing what is playing in it.
+ *
+ * The wall is already N panels with one of them wide, so this is the same object with the weighting
+ * taken out — which is why it needs no layout of its own, only equal `flex` and a sleeve that is
+ * allowed to be a picture rather than a spine. For a panel in a hallway this is the useful question:
+ * not *what is this* but *what is the house doing*.
+ */
+.cx-root[data-rest='house'] .cx-wall-room {
+  flex: 1 1 0;
+  transition: flex-grow 1.4s var(--cx-ease);
+}
+
+/*
+ * And the room you are in stops being the exception.
+ *
+ * Its panel keeps the canvas layout — sleeve centred, chrome gone — at the size the others are, and
+ * loses its label: with every room showing one record, a paragraph under one of them is the odd one
+ * out. What still marks it is the light it throws, which the others do not have.
+ */
+@media (min-width: 980px) {
+  /* Both carry `[data-idle]` as well, so they outrank the canvas rules further down the sheet that
+     set the same two properties for the *record* at rest. Source order cannot settle it: the two
+     states are siblings, not a base and an override. */
+  .cx-root[data-rest='house'][data-idle] .cx-stage-inner {
+    /* The same size the slivers give their sleeves, so the row reads as one set of pictures rather
+       than as one room that happens to be in the middle. */
+    --cx-doek: min(320px, 18vw);
+    gap: clamp(18px, 2.4vh, 34px);
+  }
+
+  /*
+   * And it keeps its name, for the same reason the others do.
+   *
+   * Hiding the label entirely made the room you are in the only picture on the wall without a caption,
+   * which is the asymmetry it was meant to avoid. What goes is everything *below* the name: a title, an
+   * artist and a record under one of five pictures is a paragraph in a gallery.
+   */
+  .cx-root[data-rest='house'][data-idle] .cx-stage-meta > *:not(.cx-eyebrow) {
+    display: none;
+  }
+
+  .cx-root[data-rest='house'][data-idle] .cx-eyebrow-src {
+    display: none;
+  }
+
+  .cx-root[data-rest='house'][data-idle] .cx-eyebrow {
+    color: var(--t4);
+  }
+}
+
+/* --- picking a room up ---------------------------------------------------- */
+
+/*
+ * What is in the hand.
+ *
+ * A sleeve at 132px, tilted four degrees, following the pointer. Fixed to the viewport rather than
+ * parented to what it came from: every panel on this screen clips its own overflow, so a ghost that
+ * lived inside the sliver it was picked up from would be cut off at the first edge it crossed.
+ */
+.cx-hand {
+  position: fixed;
+  z-index: 200;
+  width: 132px;
+  height: 132px;
+  margin: -66px 0 0 -66px;
+  border-radius: 5px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+  box-shadow:
+    0 30px 64px -20px rgb(0 0 0 / 88%),
+    inset 0 0 0 1px rgb(255 255 255 / 16%);
+  rotate: -4deg;
+  animation: cx-hand-in 0.16s var(--cx-ease);
+}
+
+@keyframes cx-hand-in {
+  from {
+    scale: 0.86;
+    opacity: 0;
+  }
+}
+
+/* A room with no artwork is carried by its name. */
+.cx-hand-name {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  font-size: 9.5px;
+  font-style: normal;
+  letter-spacing: 0.18em;
+  color: var(--t4);
+  text-align: center;
+}
+
+.cx-root[data-dragging] {
+  cursor: grabbing;
+}
+
+/* The record is in the air, so the place it came from says so. */
+.cx-root[data-dragging='record'] .cx-cover {
+  opacity: 0.5;
+}
+
+/*
+ * The room you are in, as a target for another room.
+ *
+ * `outline` rather than a box-shadow, because the hairline between panels is already an inset shadow
+ * and one of the two would have to lose.
+ */
+.cx-wall-room[data-hot] {
+  outline: 1px solid var(--hair);
+  outline-offset: -1px;
+}
+
+.cx-wall-room[data-over] {
+  outline-color: color-mix(in srgb, var(--g) 60%, transparent);
+  background: rgb(255 255 255 / 2.5%);
+}
+
+/*
+ * What the house said, when it refused.
+ *
+ * One line, no box — a room that cannot stay in step with this one is worth a sentence and then
+ * silence, and this face does not have a component with a fill and a border to put it in.
+ */
+.cx-said {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  z-index: 40;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--t4);
+  pointer-events: none;
+  translate: -50% 0;
+  animation: cx-said-in 0.3s var(--cx-ease) both;
+}
+
+@keyframes cx-said-in {
+  from {
+    opacity: 0;
+    translate: -50% 8px;
+  }
+}
+
+/* --- stage (desktop) ------------------------------------------------------ */
+
+/*
+ * The stage is a frame; the composition inside it is a block.
+ *
+ * It used to be `display: flex` directly — cover pinned to the left padding, meta column stretching to
+ * whatever the window happened to be — which on a 1600px window put the artwork at the far left, the
+ * controls in the middle and 400px of nothing on the right, and on a 2560px monitor was simply spread.
+ * A capped, centred block reads as composed at every width, which is the difference between a layout
+ * and a placement.
+ */
+.cx-stage {
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  padding: 22px clamp(28px, 4vw, 64px);
+  overflow: hidden auto;
+  animation: cx-view-in 0.3s var(--cx-ease) both;
+}
+
+.cx-stage-inner {
+  display: flex;
+  align-items: center;
+  gap: clamp(38px, 4.4vw, 72px);
+  /*
+   * As wide as what it holds, then centred. Not a fixed cap.
+   *
+   * It was `width: 100%; max-width: 1240px`, which is two failures with one number: at 2560 the block
+   * was 1240 in the middle of the window with 660px of nothing either side, and raising the cap to fit
+   * the larger sleeve made 1728 *spread* instead — cover against the left padding, column against the
+   * right, the composition gone. A cap can only be right at one width.
+   *
+   * `fit-content` makes the block measure its own contents (sleeve + gap + column), so the same rule
+   * composes at 1024 and at 2560: the two columns keep their relationship and the window's spare width
+   * becomes margin, which is what centring is for.
+   */
+  /*
+   * The sleeve's size lives here, not on the sleeve.
+   *
+   * Both columns measure against it now: the record *is* this size, and the column of type beside it is
+   * at least this tall — which is what puts the room's controls on the record's own bottom edge instead
+   * of halfway up the page. A poster has two columns of one height.
+   */
+  --cx-cover-size: min(clamp(240px, 68vh, 860px), 40vw);
+  transition: --cx-cover-size 1.8s var(--cx-ease);
+
+  width: fit-content;
+  max-width: 100%;
+  /*
+   * A little of the height given back at the bottom, so the pair sits above the window's centre.
+   *
+   * The sleeve stands on a reflection, and a reflection needs floor. Centred exactly, the block leaves
+   * the same room below the sleeve as above it, and above it there is nothing to put there — so the
+   * mirror ran into the bottom edge of the stage and was cut off with a straight line. Padding on a
+   * `border-box` column takes the space out of the centring, which moves the pair up by half of it.
+   */
+  /* Less floor than before: the sleeve is a third taller, so 6vh of reserved reflection pushed the
+     pair up until the title's own column ran out of room. 3vh still keeps the mirror off the edge. */
+  padding-bottom: 3vh;
+  /*
+   * Full height, so the two columns centre against the *window* rather than against each other.
+   *
+   * Without it the row's height is whichever column is taller — the meta one, once a two-line title and
+   * a timeline are in it — so every late arrival in that column moved the sleeve. The queue lands a
+   * couple of hundred milliseconds after the page does, and the artwork slid 14px each time. It also
+   * broke the sleeve's flight between faces, which measures where it is about to land (see
+   * `coverMorph.flyTo`).
+   */
+  height: 100%;
+}
+
+.cx-stage-art {
+  position: relative;
+  flex: none;
+  /*
+   * One size, declared once.
+   *
+   * The sleeve, its bloom and the far halo are the same object drawn three times, and each carried its
+   * own copy of the same expression — which is how a 460px cover ends up inside a 420px glow the next
+   * time one of them is tuned.
+   *
+   * 54vh up to 620px, was 44vh up to 460px: on a 2560x1440 monitor the old cap drew a 460px sleeve in
+   * the middle of a 1440px-tall window, so the subject of the screen took up a fifth of it. Still
+   * capped by width (38vw) for a wide-but-short window, so it never crowds the title.
+   */
+  /*
+   * The record owns the height.
+   *
+   * 54vh drew a 619px sleeve in a 1093px room: the subject of the face taking 57% of the page it is
+   * the subject of, with two hundred pixels of nothing above it and the reflection's floor below.
+   * This face exists to make the record the thing you look at, and an art player that keeps its
+   * artwork under two thirds of the height is a technical player with a big cover.
+   *
+   * 68vh, capped at 860 for a tall monitor and at 40vw so a wide-but-short window never lets the
+   * sleeve crowd the title beside it.
+   */
+}
+
+/*
+ * The sleeve, blurred behind itself.
+ *
+ * A circle the size of the cover, holding the cover, at `blur(52px) saturate(1.25)` — so the light around
+ * the artwork is the artwork's own light. Two earlier attempts got this wrong in opposite directions: a
+ * pair of album-coloured radials across the whole window (a colour cast at any strength you could see) and
+ * an ellipse in the extracted accent (a shape with an edge). The picture itself needs neither extraction
+ * nor a shape.
+ *
+ * `top: 0` and the same `width` as the cover, so it is concentric with it and the blur is what makes it
+ * larger. Under the artwork, above the page's wash.
+ */
+.cx-bloom {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 0;
+  width: var(--cx-cover-size);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+  translate: -50% 0;
+  filter: blur(52px) saturate(1.25);
+  opacity: 0.32;
+  transform-origin: center;
+  transition: opacity 1.4s ease;
+  will-change: transform, opacity;
+}
+
+/*
+ * Breathing, and only while the room is playing.
+ *
+ * 7s is slow enough that you never catch it moving and never quite see it still — which is the difference
+ * between a light that is on and a room that has music in it. A paused sleeve holds at 0.32 and stops.
+ */
+.cx-stage-art:not([data-quiet]) .cx-bloom {
+  opacity: 0.85;
+  animation: cx-bloom-breathe 7s ease-in-out infinite;
+}
+
+@keyframes cx-bloom-breathe {
+  0%,
+  100% {
+    transform: scale(1.04);
+    opacity: 0.52;
+  }
+  50% {
+    transform: scale(1.16);
+    opacity: 0.82;
+  }
+}
+
+/*
+ * The far halo: the same picture, twice the size, a fifth of the strength.
+ *
+ * It has been in the markup since the bloom was rebuilt and never had a single rule, so it drew
+ * nothing at all. It earns its place now the sleeve is 620px: one glow the size of the cover is a
+ * light *behind* an object, two is an object *standing in* light — which is what a room looks like,
+ * and what stops a large sleeve reading as a sticker on black.
+ *
+ * No breathing of its own. The near bloom already moves; two cycles at two sizes is a pulse.
+ */
+.cx-bloom-far {
+  position: absolute;
+  left: 50%;
+  top: -16%;
+  z-index: 0;
+  width: calc(var(--cx-cover-size) * 1.5);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+  translate: -50% 0;
+  filter: blur(130px) saturate(1.15);
+  opacity: 0.2;
+  /*
+   * Faded to nothing well inside its own box, which is not decoration — it is what keeps the clip off
+   * the screen. `.cx-stage` is `overflow: hidden auto` (it has to be: a scrolling column must not grow
+   * a horizontal scrollbar), so anything reaching past the stage's bottom edge is cut with a straight
+   * line. A 1.9x halo did, and the plinth is exactly what made that cut visible — it moved the stage's
+   * bottom edge up into open page. With the light already at zero by 76% of the radius, the cut lands
+   * where there is nothing left to cut.
+   */
+  mask-image: radial-gradient(closest-side, #000 30%, transparent 62%);
+  transition: opacity 1.4s ease;
+}
+
+.cx-stage-art[data-quiet] .cx-bloom-far {
+  opacity: 0.1;
+}
+
+/* The artwork itself has to sit above its own glow. */
+.cx-stage-art .cx-cover {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * The cover *is* the play button.
+ *
+ * A 340px target beats a 64px one, and pressing the artwork to stop the music is the gesture people
+ * try first on a touchscreen. The paused state is stated by the artwork itself — 3% smaller and
+ * slightly darker — which is a quieter way to say "not playing" than a badge.
+ */
+.cx-cover {
+  position: relative;
+  display: block;
+  /* It can be pressed and it can be carried; the cursor says the second, because the first is what
+     every cover in every player already does. */
+  cursor: grab;
+  /* As large as the window can carry — the size itself lives on `.cx-stage-art`, which is also
+     where the argument for it is written, because the two glows have to agree with it. */
+  width: var(--cx-cover-size, min(clamp(220px, 44vh, 460px), 42vw));
+  aspect-ratio: 1;
+  overflow: hidden;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    /* The long cast, for the room. */
+    0 44px 90px -40px rgb(0 0 0 / 95%),
+    /* And a tight one directly beneath, which is what makes an object look like it is *touching* the
+       surface it stands on rather than hovering a centimetre above it. It is the shadow the reflection
+       needs to be believed. */
+    0 8px 18px -8px rgb(0 0 0 / 85%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+  transition:
+    transform 0.6s var(--cx-ease),
+    filter 0.6s;
+}
+
+/*
+ * The gloss of a printed sleeve.
+ *
+ * One diagonal breath of light across the top-left corner, at an alpha you would not name if asked —
+ * the difference between a JPEG pasted on the page and an object lying on it. Soft-light so it rides
+ * the artwork's own tones instead of sitting on them as a grey film; `pointer-events` cost nothing
+ * because a pseudo-element has none. The empty cover keeps its dashed border and gets no gloss —
+ * there is nothing printed there to catch the light.
+ */
+.cx-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    rgb(255 255 255 / 10%) 0%,
+    rgb(255 255 255 / 4%) 22%,
+    transparent 38%
+  );
+  mix-blend-mode: soft-light;
+}
+
+.cx-cover-empty::after {
+  content: none;
+}
+
+/*
+ * The artwork, as a layer rather than as the button's own background.
+ *
+ * Two of these live inside the sleeve at all times (see `Crossfade`), one showing and one waiting, so a
+ * track change is a dissolve. The button keeps `--cx-cover` as its fill, which is what shows through
+ * for the fraction of a second before a picture arrives — and what a record with no artwork keeps.
+ */
+.cx-cover-art {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+/*
+ * The surface under the sleeve.
+ *
+ * The container is a window 42% of the sleeve's height, and the artwork inside it is a full-height copy
+ * flipped about its own centre — so the top of the window shows the *bottom* edge of the sleeve, which
+ * is what a reflection is. `contain: paint` on the crossfade slot does the clipping for free.
+ *
+ * Short, dim, and slightly out of focus: a surface that reflects perfectly is glass, and a record does
+ * not stand on glass. Everything about the numbers here is chosen to be noticed only if it is removed.
+ */
+
+/* Paused, the room stops reflecting quite so brightly — the same withdrawal the bloom makes. */
+
+/* Paused is stated by the artwork itself: 3% smaller and half the colour drained out of it, which is a
+   quieter way to say "not playing" than a badge. */
+.cx-cover[data-paused] {
+  transform: scale(0.97);
+  filter: grayscale(0.5) brightness(0.82);
+}
+
+.cx-cover-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  /* A hairline, not a dashed one: dashes are what a drop target wears, and this is a room at rest. */
+  background: radial-gradient(circle at 50% 42%, rgb(255 255 255 / 4%), transparent 62%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 14%);
+}
+
+.cx-cover-empty-mark {
+  width: 22%;
+  height: auto;
+}
+
+.cx-cover-hover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 12 / 28%);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.cx-cover:hover .cx-cover-hover {
+  opacity: 1;
+}
+
+.cx-cover-glyph {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgb(10 10 12 / 70%);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 60%);
+  color: #fff;
+}
+
+.cx-stage-meta {
+  display: flex;
+  flex-direction: column;
+  /* A stated width, not a share of the leftover: the block around it is `fit-content`, so a column
+     that sized itself from what was left over would have nothing to take a share of. */
+  flex: none;
+  min-width: 0;
+}
+
+.cx-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.26em;
+  color: var(--t5);
+}
+
+/*
+ * Where the music came from, as the second half of the eyebrow.
+ *
+ * It was a bordered chip (`.cx-src`) sitting next to the artist's name — the only boxed thing left on a
+ * screen whose stated rule is that nothing is boxed, and it competed for the artist's row with the
+ * artist. Provenance belongs in the line that already says which room this is: `KITCHEN · APPLE MUSIC`
+ * is one fact about where the sound is coming from, read left to right.
+ */
+.cx-eyebrow-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-style: normal;
+  color: var(--t7);
+}
+
+.cx-eyebrow-src::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--t8);
+}
+
+.cx-title {
+  /* The name above it owns the space now — see `.cx-artistrow`. */
+  margin-top: 0;
+  /* The size itself is on the ladder below, keyed to how long the title is. This is the value a
+     title gets if the step attribute never arrives. */
+  font-size: clamp(38px, min(6vh, 4.6vw), 76px);
+  color: var(--t1);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  /* −0.045em, tighter than the display face's own default: at 112px the tracking that makes a 19px
+     heading breathe makes a title look spaced out. */
+  letter-spacing: -0.045em;
+  /* A two-line title breaks at its middle rather than dropping one word — supported since
+     Chrome 114/Safari 17.5, and a title that ignores it is exactly what it was before. */
+  text-wrap: balance;
+  /* Optical alignment: a heavy display weight carries enough side bearing at this size that a left-aligned
+     title reads as indented next to a 10px mono eyebrow above it. */
+  margin-left: -0.035em;
+  /* A title that is one 60-character word (a mix, a bootleg, half of YouTube) may break inside it
+     rather than run out of the column. */
+  overflow-wrap: break-word;
+}
+
+/*
+ * The ladder: how big a title gets is decided by how long it is.
+ *
+ * It was `clamp(50px, 8.6vh, 112px)` — a pure function of viewport *height* — so every title on a
+ * 1440px-tall monitor was set at 112px, `Suddenly (w/ Beatie Wolfe)` included, which then ran out of
+ * its column and was cut to `Suddenly (w/ Beatie…` with 900px of empty page beside it. Truncating
+ * while there is room is the one thing the subject of this screen must never do.
+ *
+ * Five steps, chosen where two lines of the step above stop fitting the column; see `titleStep` in
+ * `art/Stage.tsx` for why it is stepped rather than measured. Each step is capped by *width* as well
+ * as height (`min(Xvh, Yvw)`), because a tall narrow window has a narrow column and the old rule read
+ * only the height — the exact blindness that produced the truncation.
+ *
+ * The longest step is the one place a third line is allowed: past ~90 characters a title has become a
+ * sentence, and two lines of it is not a choice between big and small, it is a choice between showing
+ * it and not.
+ */
+/* The ladder, one step louder at the top: a two-word title on a 2000px screen was 108px next to a
+   700px record, and a poster's name is the loudest thing on it after the picture. */
+.cx-title[data-len='1'] {
+  font-size: clamp(56px, min(11vh, 8.4vw), 150px);
+}
+
+.cx-title[data-len='2'] {
+  font-size: clamp(48px, min(9vh, 6.8vw), 118px);
+}
+
+.cx-title[data-len='3'] {
+  font-size: clamp(38px, min(6vh, 4.6vw), 76px);
+}
+
+.cx-title[data-len='4'] {
+  font-size: clamp(30px, min(4.4vh, 3.4vw), 54px);
+  letter-spacing: -0.03em;
+}
+
+.cx-title[data-len='5'] {
+  font-size: clamp(26px, min(3.4vh, 2.6vw), 40px);
+  letter-spacing: -0.022em;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/*
+ * The name, above the work.
+ *
+ * It sat under the title and read as the second half of a search result. Above it, tracked and one
+ * step down in size, it is the top line of a label — and the eye gets *Radiohead → Staircase* in the
+ * order a person actually asks it.
+ */
+.cx-artistrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  margin-bottom: 13px;
+  min-width: 0;
+}
+
+.cx-artist {
+  font-size: 21px;
+  /* One step brighter than it was: as the line *under* a 100px title it could afford to recede, and
+     as the line above it, it is the first thing read. */
+  color: var(--t2);
+  letter-spacing: 0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The album, under the artist rather than folded into it.
+ *
+ * `Artist — Album` on one line makes the album look like part of the artist's name, and it is the first
+ * thing to be cut by an ellipsis on the one screen with room for it. It is a *place the track came
+ * from*, so it sits under the name in a plainer grey and is allowed to be omitted when it repeats the
+ * title (a single, where the album is the track).
+ */
+.cx-album {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--t5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-fav {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--t7);
+  transition:
+    color 0.18s,
+    transform 0.12s;
+}
+
+.cx-fav {
+  width: 32px;
+  height: 32px;
+}
+
+.cx-fav[data-on] {
+  color: var(--g);
+}
+
+.cx-fav:active {
+  transform: scale(0.9);
+}
+
+.cx-error {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #d8a08a;
+}
+
+.cx-cta {
+  display: inline-flex;
+}
+
+/*
+ * What is next, as records.
+ *
+ * Named `cx-upnext`, not `cx-shelf`: Browse has owned `.cx-shelf` for its sections since long before
+ * this existed, and a second meaning for one class turned every listing's heading into a column beside
+ * its own row instead of a line above it. A player's up-next strip and a catalogue's shelf are two
+ * different objects that happen to share a metaphor.
+ *
+ * Under the composition rather than beside it, because a running order belongs to a room and this is
+ * the room's panel. Four sleeves at 54px — small enough that the record above them is still the subject,
+ * large enough to be recognised, and the artist under each is what tells you it is a *list* and not a
+ * strip of decoration.
+ *
+ * The rows reveal themselves the way every other list in this face does: the picture is always there,
+ * the words come up under the pointer. A queue that shouts its contents competes with the thing playing.
+ */
+/*
+ * A shelf, not a widget.
+ *
+ * Four 54px thumbnails with two lines of grey type under each was the weakest thing on a face about
+ * artwork — a browser's list dropped into a poster. Records are recognisable at 88px; the words come
+ * back on hover, where a name is worth having and costs nothing until then.
+ */
+/*
+ * The foot of the column: the shelf on the left, the level on the right.
+ *
+ * `margin-top: auto` puts it at the bottom of whatever height the column has, which is what turns the
+ * dead quarter under the transport into the place the room's own two facts live.
+ */
+.cx-stage-foot {
+  display: flex;
+  justify-content: space-between;
+  order: 2;
+}
+
+.cx-upnext {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-upnext-lbl {
+  align-self: flex-start;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--t6);
+  transition: color 0.18s;
+}
+
+.cx-upnext-lbl:hover {
+  color: var(--t3);
+}
+
+.cx-upnext-art {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  transition:
+    scale 0.35s var(--cx-ease),
+    opacity 0.35s var(--cx-ease);
+}
+
+/* The second sleeve stands a step back, so the shelf reads as a queue and not as two equal offers. */
+.cx-upnext-art + .cx-upnext-art {
+  opacity: 0.7;
+}
+
+.cx-upnext-art:hover {
+  scale: 1.06;
+  opacity: 1;
+}
+
+.cx-upnext-txt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  width: clamp(150px, 14vw, 220px);
+  margin-left: 6px;
+  text-align: left;
+}
+
+.cx-upnext-title,
+.cx-upnext-artist {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--t2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.18s;
+}
+
+.cx-upnext-artist {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--t6);
+}
+
+.cx-upnext-txt:hover .cx-upnext-title {
+  color: var(--t1);
+}
+
+/* At rest a running order is a plan, and the screen is not making plans. */
+.cx-root[data-idle] .cx-upnext {
+  max-height: 0;
+  margin: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 1.4s var(--cx-ease),
+    visibility 1.4s step-end,
+    max-height 1.4s var(--cx-ease),
+    margin 1.4s var(--cx-ease);
+}
+
+/* --- live, timeline, transport, volume (shared by both stages) ------------ */
+
+/*
+ * Three bars, moving — the mark for "this is the one you are hearing".
+ *
+ * Used in the queue, in a track listing and beside a room's name in the sheet, so it has to work at one
+ * size against three different type sizes: 9px tall, in the accent, aligned to the cap height of the
+ * text beside it. The middle bar leads and the outer two trail it, which is the difference between a
+ * level meter and a loading spinner.
+ */
+.cx-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 9px;
+  color: var(--g);
+}
+
+.cx-bars i {
+  width: 2px;
+  border-radius: 0.5px;
+  background: currentcolor;
+  /* Grows off the floor, not out of its own middle: a level meter stands on a baseline. */
+  transform-origin: bottom;
+  animation: cx-bar-jump 0.92s ease-in-out infinite;
+}
+
+.cx-bars i:nth-child(1) {
+  height: 45%;
+  animation-delay: -0.62s;
+}
+
+.cx-bars i:nth-child(2) {
+  height: 100%;
+}
+
+.cx-bars i:nth-child(3) {
+  height: 62%;
+  animation-delay: -0.31s;
+}
+
+/* Paused: the mark stays — that row is still the one you are on — but nothing moves. */
+.cx-bars[data-still] i {
+  animation: none;
+  opacity: 0.55;
+}
+
+@keyframes cx-bar-jump {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.cx-live {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-top: clamp(18px, 5vh, 46px);
+}
+
+.cx-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--g);
+  animation: cx-breathe 1.4s ease-in-out infinite;
+}
+
+.cx-live-txt {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  color: var(--g);
+}
+
+.cx-bar-wrap {
+  max-width: 640px;
+  margin-top: clamp(14px, 4.6vh, 42px);
+}
+
+/*
+ * The stage's timeline, in the phone player's clothes.
+ *
+ * One rail, rounded, no knob — the same line the phone draws, because it is the same statement and
+ * this face has one voice at both widths. The knob was a pointer's affordance and it is not needed:
+ * the whole rail takes the press, and a dot riding a hairline under a 100px title was the loudest
+ * thing in the composition after the sleeve.
+ */
+.cx-stage .cx-bar-rail {
+  height: 3px;
+  border-radius: 999px;
+}
+
+.cx-stage .cx-bar-fill {
+  border-radius: 999px;
+}
+
+.cx-stage .cx-bar-knob {
+  display: none;
+}
+
+.cx-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 18px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cx-bar-rail {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 2px, not 3: the line is a measure, not a control — it grows under the pointer when it becomes one. */
+  height: 2px;
+  background: rgb(255 255 255 / 8%);
+  transition: height 0.18s;
+}
+
+.cx-bar[data-scrub] .cx-bar-rail {
+  height: 5px;
+}
+
+.cx-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--g);
+  /* Matched to the server's once-a-second progress event, so the fill glides between ticks instead
+     of stepping. Dropped while scrubbing — see `[data-scrub]`. */
+  transition: width 0.92s linear;
+}
+
+/*
+ * The head of the line carries a light.
+ *
+ * A dot with a ring cut out of the background is a slider handle; a dot that *glows* the record's own
+ * colour into the page around it is the point the music has reached. Same 9px, one more shadow.
+ */
+.cx-bar-knob {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: var(--g);
+  box-shadow:
+    0 0 0 3px var(--cx-bg),
+    0 0 22px 2px color-mix(in srgb, var(--g) 55%, transparent);
+  translate: 0 -50%;
+  transition: left 0.92s linear;
+}
+
+.cx-bar[data-scrub] .cx-bar-fill,
+.cx-bar[data-scrub] .cx-bar-knob {
+  transition: none;
+}
+
+.cx-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t6);
+}
+
+.cx-time-el {
+  color: var(--t4);
+}
+
+.cx-transport {
+  display: flex;
+  align-items: center;
+  gap: clamp(28px, 3vw, 46px);
+  margin-top: clamp(12px, 4vh, 38px);
+}
+
+.cx-transport[data-size='phone'] {
+  gap: 30px;
+  margin-top: 16px;
+  justify-content: center;
+}
+
+.cx-transport button {
+  color: var(--t3);
+  transition:
+    color 0.18s,
+    transform 0.15s;
+}
+
+.cx-tr-side[data-on] {
+  color: var(--g);
+}
+
+.cx-tr-side:hover,
+.cx-tr-skip:hover {
+  color: var(--t1);
+  transform: scale(1.08);
+}
+
+/*
+ * The play button: a ring, not a fill.
+ *
+ * The only round control on the screen, and it inverts on hover — which is the loudest thing this
+ * design does, and it is spent here because this is the one control you should be able to find
+ * without looking.
+ */
+.cx-tr-play {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 85%);
+  color: #fff;
+  transition:
+    background 0.18s,
+    color 0.18s,
+    transform 0.15s;
+}
+
+.cx-transport[data-size='phone'] .cx-tr-play {
+  width: 60px;
+  height: 60px;
+}
+
+.cx-tr-play:hover {
+  background: #fff;
+  color: #0a0a0b;
+}
+
+.cx-tr-play:active {
+  transform: scale(0.93);
+}
+
+/*
+ * As tall as the record — but only when the record is the record.
+ *
+ * The auto margin on `.cx-volrow` needs room to push into, and the sleeve's own height is that room.
+ * Scoped to the playing stage: the two rest states (`canvas`, `house`) lay the same markup out as a
+ * *column*, and there a 780px minimum on the text block shoved the picture to the top of the panel and
+ * left the caption stranded under it — which is exactly what it did to the gallery until I looked.
+ */
+.cx-root:not([data-rest]) .cx-stage-meta {
+  min-height: var(--cx-cover-size);
+}
+
+.cx-vol {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--t6);
+}
+
+.cx-vol-slider {
+  display: flex;
+  align-items: center;
+  width: 150px;
+  height: 22px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cx-vol-rail {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  background: var(--track);
+}
+
+/* Neutral, not the accent: a fader is furniture. Colour here would compete with the timeline, which
+   is the one bar on screen that means something. */
+.cx-vol-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--t3);
+}
+
+.cx-vol-knob {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  border-radius: 50%;
+  background: var(--t1);
+  box-shadow: 0 0 0 3px var(--cx-bg);
+  translate: 0 -50%;
+}
+
+.cx-vol-bubble {
+  position: absolute;
+  bottom: 22px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgb(10 10 12 / 92%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 14%);
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+  translate: -50% 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/*
+ * The play glyph, on a paused sleeve only.
+ *
+ * A play button over playing artwork is a button that lies, and this face has a transport of its own two
+ * rows down. This is the thing that says *the picture you are looking at is stopped*, and it is why the
+ * whole canvas can be the tap target without needing a label.
+ */
+.cx-doek-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.cx-doek-play svg {
+  box-sizing: content-box;
+  width: 20px;
+  height: 20px;
+  padding: 21px;
+  border-radius: 50%;
+  background: rgb(10 10 12 / 50%);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 75%);
+  backdrop-filter: blur(10px);
+  color: #fff;
+}
+
+@keyframes cx-title-swap {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+.cx-rail-sec {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The record the run belongs to, once, above the list — instead of under every title in it. */
+.cx-qrun {
+  margin: -2px 0 14px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--t6);
+}
+
+.cx-qrow {
+  display: flex;
+  align-items: center;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  border-radius: 5px;
+  transition: background 0.15s;
+}
+
+.cx-qrow:hover {
+  background: rgb(255 255 255 / 3.5%);
+}
+
+/* Already played: dimmed, but not gone — it is still where you were a minute ago. */
+.cx-qrow[data-past] {
+  opacity: 0.42;
+}
+
+.cx-qrow[data-past]:hover {
+  opacity: 1;
+}
+
+.cx-qmain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  /* The title must not run into the duration beside it: an ellipsis touching a time reads as one word. */
+  padding-right: 10px;
+  text-align: left;
+}
+
+/*
+ * The left column: a sleeve, a number, or the moving bars.
+ *
+ * One fixed slot whichever it is, so the titles line up down the list. It is 30px wide because that is
+ * what a legible thumbnail needs; a numbered run gets the same 30px with the number right-aligned in it,
+ * which puts the digits in the same place the sleeve's right edge was.
+ */
+.cx-qmark {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+
+.cx-qrow[data-numbered] .cx-qmark {
+  height: 22px;
+}
+
+.cx-qnum {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t7);
+  transition: color 0.18s;
+}
+
+.cx-qrow:hover .cx-qnum {
+  color: var(--t3);
+}
+
+.cx-qcov {
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.cx-qmeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-qtitle {
+  font-size: 15px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+/*
+ * The row you are hearing: brighter, and lit — not ringed.
+ *
+ * It was a 1px accent rectangle around the row, which made the queue a list of twelve plain lines and one
+ * form field. The bars in the left slot already say *this one*; all the row itself has to do is come
+ * forward, which is what the whitest text on the panel plus a breath of the accent behind it does.
+ */
+.cx-qrow[data-current] .cx-qtitle {
+  color: var(--t1);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--g) 45%, transparent);
+}
+
+.cx-qsub {
+  margin-top: 1px;
+  font-size: 10.5px;
+  color: var(--t6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-qdur {
+  flex: none;
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t7);
+}
+
+.cx-qrm {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--t8);
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.cx-qrow:hover .cx-qrm {
+  opacity: 1;
+}
+
+.cx-qrm:hover {
+  color: var(--t1);
+}
+
+/*
+ * Touch has no hover — but twelve × marks in a column is a column of × marks, not a queue.
+ *
+ * Held at a quarter, which is enough to find with a thumb and not enough to read as a list of buttons.
+ */
+@media (hover: none) {
+  .cx-qrm {
+    opacity: 0.28;
+  }
+}
+
+/* --- the two folded edges ------------------------------------------------- */
+
+/*
+ * One curve for unfolding, and it is not the product's.
+ *
+ * Every other transition in this player runs 140–420ms on `(0.2, 0.8, 0.2, 1)` — the pace of a control
+ * answering a press. Unfolding an edge is not that: it is 900ms on `(0.22, 0.9, 0.24, 1)`, a curve that
+ * leaves almost immediately and arrives almost imperceptibly. That is the difference between a panel
+ * opening and a thing *unfolding*, and it is the whole reason these can be permanent furniture.
+ */
+.cx-root {
+  --cx-fold: 0.9s cubic-bezier(0.22, 0.9, 0.24, 1);
+  --cx-fade: 0.65s ease;
+}
+
+/* The VU shimmer at the top of a playing fill: audio is moving through this room. */
+@keyframes cx-vu {
+  0% {
+    transform: scaleY(0.2);
+  }
+  35% {
+    transform: scaleY(1);
+  }
+  60% {
+    transform: scaleY(0.45);
+  }
+  80% {
+    transform: scaleY(0.8);
+  }
+  100% {
+    transform: scaleY(0.3);
+  }
+}
+
+/* --- sheets --------------------------------------------------------------- */
+
+.cx-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(9px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.32s,
+    visibility 0.32s;
+}
+
+.cx-scrim[data-open] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.cx-sheet {
+  --sheet-pad: 22px;
+
+  position: fixed;
+  z-index: 96;
+  left: 50%;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(580px, 100%);
+  max-height: 86vh;
+  padding: 16px 0 0;
+  border: 1px solid var(--hair);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--cx-surface);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 -30px 80px -30px rgb(0 0 0 / 90%);
+  color: var(--t2);
+  translate: -50% 100%;
+  visibility: hidden;
+  transition:
+    translate 0.44s var(--cx-ease),
+    visibility 0.44s;
+}
+
+/*
+ * One drop of the record's colour, on the lid.
+ *
+ * A sheet is the only surface in this face that sits *over* the artwork, so it is the one place the
+ * page's own light has been cut off — and a panel of flat near-black dropped on a lit room reads as a
+ * dialog from another application. A single hairline along its top edge, fading out by a third of the
+ * way across, is enough to say the panel belongs to what is playing behind it. It glides with `--g`
+ * like everything else that reads the accent.
+ */
+.cx-sheet::before {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--g) 70%, transparent), transparent 42%);
+  pointer-events: none;
+}
+
+.cx-sheet[data-open] {
+  translate: -50% 0;
+  visibility: visible;
+}
+
+/*
+ * Head and body, split — so the body can be masked instead of cut.
+ *
+ * The whole sheet used to be one scrolling box, which meant a fourteen-track queue ran under a rounded
+ * corner and stopped dead at it. Fading the list into both edges says the same thing a scrollbar says,
+ * in the vocabulary this face already uses everywhere else.
+ */
+.cx-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  padding: 0 var(--sheet-pad) 16px;
+}
+
+.cx-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px var(--sheet-pad) calc(26px + env(safe-area-inset-bottom));
+  mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 26px), transparent 100%);
+}
+
+/* A source with no queue has one list and therefore no choice to offer: the label, not a tab. */
+.cx-sheet-tab-static {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--t5);
+}
+
+.cx-sheet-handle {
+  display: block;
+  width: 38px;
+  height: 3px;
+  margin: 0 auto 18px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 14%);
+}
+
+@media (min-width: 980px) {
+  /* On a desk a bottom sheet is a phone affordance on a 27" screen: centre it and drop the handle. */
+  .cx-sheet {
+    --sheet-pad: 30px;
+
+    top: 50%;
+    bottom: auto;
+    max-height: 88vh;
+    padding-top: 26px;
+    border: 1px solid var(--hair);
+    border-radius: 16px;
+    translate: -50% calc(-50% + 20px);
+  }
+
+  .cx-sheet::before {
+    inset: -1px 14px auto;
+  }
+
+  .cx-sheet[data-open] {
+    translate: -50% -50%;
+  }
+
+  .cx-sheet[data-wide] {
+    width: min(760px, 100%);
+  }
+
+  .cx-sheet-handle {
+    display: none;
+  }
+}
+
+.cx-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 18px;
+}
+
+.cx-sec-lbl {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--t5);
+}
+
+.cx-sec-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+
+.cx-rooms-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #d8a08a;
+}
+
+/* --- more sheet ----------------------------------------------------------- */
+
+.cx-more {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Rows in the same voice as the rooms sheet: a name, a line under it, and a rule that is the boundary
+ * rather than a card that is a container. The chevron is the only thing that says "this goes somewhere".
+ */
+.cx-more-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--hair-soft);
+  text-align: left;
+  /* One of these rows is an `<a>` — the console is a navigation, not a mode. Nothing should say so. */
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: padding-left 0.22s var(--cx-ease);
+}
+
+.cx-more-row:hover {
+  padding-left: 6px;
+}
+
+.cx-more-name {
+  grid-column: 1;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-more-row:hover .cx-more-name {
+  color: var(--t1);
+}
+
+.cx-more-sub {
+  grid-column: 1;
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: var(--t6);
+}
+
+.cx-more-go {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  color: var(--t8);
+  transition:
+    color 0.18s,
+    translate 0.22s var(--cx-ease);
+}
+
+.cx-more-row:hover .cx-more-go {
+  color: var(--t4);
+  translate: 3px 0;
+}
+
+/* A mode reads its own state back as a word — the accent when it is doing something. */
+.cx-more-state {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--t7);
+  transition: color 0.2s;
+}
+
+.cx-more-state[data-on] {
+  color: var(--gb);
+}
+
+.cx-more-foot {
+  margin-top: 18px;
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  color: var(--t7);
+}
+
+/* --- browse --------------------------------------------------------------- */
+
+.cx-browse {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  animation: cx-view-in 0.3s var(--cx-ease) both;
+}
+
+/*
+ * The record's colour across the top of its page — at half what it was.
+ *
+ * This and `.cx-detail-bloom` are both the same picture blurred, and running both at full strength put a
+ * warm cast over the track list itself: the rows stopped being on black and started being on brown, which
+ * is the colour-cast failure this face spends most of its rules avoiding. The wash is the wide, quiet one
+ * and gives the page its temperature; the bloom is the local one and belongs to the sleeve. Two layers of
+ * one idea only work when one of them is clearly secondary.
+ */
+.cx-browse-bg {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 430px;
+  pointer-events: none;
+  background-position: center;
+  background-size: cover;
+  filter: blur(110px) brightness(0.34) saturate(0.8);
+  opacity: 0.3;
+}
+
+.cx-browse-fade {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 430px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(10 10 12 / 25%), var(--cx-bg));
+}
+
+.cx-browse-inner {
+  /* One token for the page's own margin: the shelves bleed past it and have to know how far. */
+  --browse-pad: clamp(20px, 6vw, 92px);
+
+  position: relative;
+  padding: 26px var(--browse-pad) 46px;
+}
+
+.cx-browse-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cx-browse-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t5);
+  transition: color 0.18s;
+}
+
+.cx-browse-back:hover {
+  color: var(--t1);
+}
+
+.cx-browse-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.cx-browse-title {
+  color: var(--t1);
+}
+
+/*
+ * A record's two actions, as text.
+ *
+ * They were a filled capsule and a hairline capsule — the only two boxed things in a face whose stated
+ * rule is that nothing is boxed, sitting directly under a heading that follows the rule. As labels they
+ * read as what they are: `play` carries the accent because it is the one action here with a consequence,
+ * `shuffle` is a second way to do the same thing and is quieter for it.
+ */
+.cx-browse-actions {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.cx-play-btn,
+.cx-shuffle-btn {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* --- a record, as a page -------------------------------------------------- */
+
+/*
+ * Two columns once there is room: the record on the left, its running order on the right.
+ *
+ * A track listing is a tall thin thing and a 1600px window is not, so the old single column left half the
+ * page empty beside a 900px list and threw the cover away on top of it. Below 1180px it stacks — a narrow
+ * window is the shape the single column was right for.
+ */
+.cx-browse-inner[data-detail] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0 clamp(36px, 5vw, 76px);
+}
+
+@media (min-width: 1180px) {
+  .cx-browse-inner[data-detail] {
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  }
+
+  /* The back link spans both columns and sits above them. */
+  .cx-browse-inner[data-detail] > .cx-browse-back {
+    grid-column: 1 / -1;
+  }
+
+  /* Everything the hero introduces — the story, the rows, the shelf beside it — is one child
+     (`.cx-browse-body`, see `Browse`), so the grid places exactly two things side by side and
+     nothing auto-flows under the sticky picture. */
+  .cx-browse-inner[data-detail] > .cx-browse-body {
+    grid-column: 2;
+  }
+
+  /*
+   * Sticky, so the cover stays with you down a hundred-track playlist.
+   *
+   * The list is what scrolls; the thing the list belongs to should not leave the screen while you read it.
+   * `top` clears the bar, and the scroll container is `.cx-browse` rather than the page, which is why this
+   * works at all — a sticky child of a non-scrolling ancestor never sticks.
+   */
+  .cx-detail {
+    position: sticky;
+    top: 8px;
+  }
+}
+
+.cx-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 26px;
+}
+
+/*
+ * The sleeve, lit the way every other sleeve in this player is lit.
+ *
+ * Same construction as the stage and the technical hero: the picture blurred behind the picture. A record
+ * you are *looking at* and a record that is *playing* are the same kind of object and should be treated
+ * as one — that consistency is most of what makes a browse view feel like part of the player rather than
+ * a file listing with covers in it.
+ */
+.cx-detail-art {
+  position: relative;
+  display: block;
+  width: clamp(180px, 22vw, 300px);
+  aspect-ratio: 1;
+  margin-bottom: 22px;
+}
+
+.cx-detail-bloom {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
+  filter: blur(46px) saturate(1.25);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.cx-detail-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  border-radius: 4px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+}
+
+/*
+ * Round for a person, square for a record — on a desk only. The phone's full-bleed band keeps its
+ * own shape for both: a circle cannot bleed to an edge, and an artist photo cropped wide is what
+ * that band is for.
+ */
+@media (min-width: 980px) {
+  .cx-detail[data-portrait] .cx-detail-cover {
+    border-radius: 50%;
+  }
+}
+
+/*
+ * --- the story ---------------------------------------------------------------
+ *
+ * A biography under the heading, in running text — the one place this face sets a paragraph.
+ * Measured like one: a readable line length, not the page's; the clamp and the `more` are in the
+ * component (`About`). The attribution is part of the deal with whichever cloud service the
+ * *server* borrowed the prose from, so it is always drawn, small and honest.
+ */
+.cx-about {
+  max-width: 640px;
+  margin: 4px 0 30px;
+}
+
+.cx-about-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--t4);
+  white-space: pre-line;
+}
+
+.cx-about-text[data-open] {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+
+.cx-about-foot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+
+.cx-about-foot button {
+  color: var(--gb);
+  transition: color 0.18s;
+}
+
+.cx-about-foot button:hover {
+  color: var(--t1);
+}
+
+.cx-about-src {
+  font-style: normal;
+  color: var(--t7);
+}
+
+/* At the end of the page, the shelf needs air above it that a mid-page shelf does not. */
+.cx-similar {
+  margin-top: 38px;
+}
+
+@media (max-width: 979px) {
+  .cx-browse-inner[data-detail] {
+    padding-top: 8px;
+  }
+
+  /* A record in the hand: the sleeve square and inset, the way it is in the player. */
+  .cx-detail {
+    display: block;
+    margin: 0 0 24px;
+  }
+
+  .cx-detail-art {
+    width: min(100%, 42vh);
+    height: auto;
+    aspect-ratio: 1;
+    margin: 6px 0 26px;
+  }
+
+  .cx-detail-bloom {
+    display: none;
+  }
+
+}
+
+.cx-detail-kind {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+}
+
+.cx-detail-title {
+  margin: 10px 0 0;
+  line-height: 1.04;
+  color: var(--t1);
+}
+
+.cx-detail-sub {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--t4);
+}
+
+.cx-detail .cx-browse-actions {
+  margin-top: 20px;
+  margin-bottom: 0;
+}
+
+.cx-browse-empty {
+  display: block;
+  padding: 20px 0;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--t7);
+}
+
+/*
+ * The mark at the end of a listing that has more to come.
+ *
+ * Tall enough for the observer to have something to see, and for the word — only there while a page
+ * is actually being waited on — to sit clear of the last row. Nothing else: the grid growing under
+ * you is the feedback, and a spinner on a face with no motion in it would be the only thing moving.
+ */
+.cx-browse-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--t7);
+}
+
+/* --- what a listing looks like before it arrives -------------------------- */
+
+/*
+ * Empty sleeves, breathing.
+ *
+ * Not a shimmer sweeping left to right — that is a loading bar wearing a costume, and twelve of them
+ * moving in step is the busiest thing that would ever appear in this face. These just rise and settle,
+ * out of phase with each other, which reads as a shelf waiting rather than a page working.
+ */
+.cx-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  animation: cx-ghost-breathe 2.1s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -170ms);
+}
+
+.cx-ghost-cov {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 2.5%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%);
+}
+
+.cx-ghost-line {
+  height: 9px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 4%);
+}
+
+.cx-ghost-line-short {
+  width: 55%;
+  height: 8px;
+  margin-top: -3px;
+}
+
+@keyframes cx-ghost-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* --- doors ---------------------------------------------------------------- */
+
+/*
+ * A listing where nothing has a picture and everything opens: the services, a share, a folder of folders.
+ *
+ * Drawn as a table of contents — the name at heading size with a rule under it, and four sleeves from
+ * inside standing on the right as the evidence. See `Door` for why it is not a grid.
+ */
+.cx-doors {
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes cx-door-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* --- grids and shelves ---------------------------------------------------- */
+
+.cx-grid {
+  display: grid;
+}
+
+/*
+ * The row runs off the edge of the window, and says so by being cut by it.
+ *
+ * A shelf that stops at the same right margin as the paragraph above it looks like a row that happens
+ * to end there — and this face has no scrollbars to correct the impression. Letting the row bleed past
+ * the content column means the tile at the edge is *visibly* half-there, which is the oldest way to say
+ * "keep going" and costs nothing: no mask that lies about a short shelf, no measuring, no script. The
+ * left inset is kept so every shelf still starts on the page's own margin.
+ */
+.cx-shelf-row {
+  display: flex;
+  gap: clamp(18px, 1.8vw, 28px);
+  padding: 4px var(--browse-pad) 16px 4px;
+  margin-right: calc(-1 * var(--browse-pad));
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+
+.cx-shelf-row .cx-tile {
+  flex: none;
+  width: clamp(140px, 13vw, 190px);
+  scroll-snap-align: start;
+}
+
+/*
+ * A door, opened out into the shelf it was describing — see the doors block in Browse.tsx.
+ *
+ * The heading keeps the door's own type size and hover, because it *is* the door: the way into the
+ * whole folder. `all` hangs on the right margin the way a track's duration does, and steps aside
+ * with the same gesture the door's arrow makes.
+ */
+.cx-doorshelf {
+  animation: cx-door-in 0.5s var(--cx-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+.cx-doors .cx-doorshelf {
+  margin: 6px 0 clamp(22px, 3.4vh, 40px);
+}
+
+.cx-doorshelf-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  width: 100%;
+  padding: 0 0 14px;
+  text-align: left;
+}
+
+.cx-doorshelf-name {
+  font-size: clamp(24px, 2.6vw, 38px);
+  line-height: 1.1;
+  color: var(--t3);
+  transition: color 0.2s;
+}
+
+.cx-doorshelf-head:hover .cx-doorshelf-name {
+  color: var(--t1);
+}
+
+.cx-doorshelf-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t7);
+  transition:
+    color 0.2s,
+    translate 0.35s var(--cx-ease);
+}
+
+.cx-doorshelf-head:hover .cx-doorshelf-go {
+  color: var(--t3);
+  translate: 4px 0;
+}
+
+.cx-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: transform 0.25s var(--cx-ease);
+  /*
+   * Arriving, staggered — capped at 14 steps so a hundred-tile grid is not a slideshow.
+   *
+   * `backwards`, not `both`: the fill has to end when the animation does, or the implicit 100% keyframe
+   * keeps hold of `transform` and the hover lift below has nothing to move.
+   */
+  animation: cx-tile-in 0.42s var(--cx-ease) backwards;
+  animation-delay: calc(min(var(--i, 0), 14) * 26ms);
+}
+
+@keyframes cx-tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(9px) scale(0.985);
+  }
+}
+
+/*
+ * The lift, and the light under it.
+ *
+ * The tile already rises on approach; the glow is what makes the rise read as the record *coming forward*
+ * rather than the box moving. Same figure as everywhere else in this face — the picture blurred behind the
+ * picture — at the size and speed a grid can afford, and only for the one being pointed at.
+ */
+.cx-tile::after {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 10%;
+  z-index: -1;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  /* Set per tile from the item's own cover: the glow cannot live inside `.cx-tile-cov`, which clips its
+     children to the artwork's radius — the whole point of it is to spill past that edge. */
+  background-image: var(--tile-art);
+  background-position: center;
+  background-size: cover;
+  filter: blur(30px) saturate(1.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--cx-ease);
+}
+
+.cx-tile:hover::after {
+  opacity: 0.72;
+}
+
+.cx-tile:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.cx-tile-cov {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 16px 34px -22px rgb(0 0 0 / 85%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+  color: var(--t8);
+}
+
+.cx-tile-ov {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, transparent 55%, rgb(0 0 0 / 45%));
+  transition: opacity 0.2s;
+}
+
+.cx-tile:hover .cx-tile-ov {
+  opacity: 1;
+}
+
+.cx-tile-chip {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(10 10 12 / 85%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%);
+  color: #fff;
+  opacity: 0;
+  transition:
+    opacity 0.2s,
+    transform 0.15s;
+}
+
+.cx-tile:hover .cx-tile-chip {
+  opacity: 1;
+}
+
+.cx-tile-chip:hover {
+  transform: scale(1.1);
+}
+
+/*
+ * Touch has no hover, so the chip has to be there all along — smaller and quieter for it.
+ *
+ * At its pointer size and full opacity it is a black disc sitting on every sleeve in the shelf, and a
+ * page of covers turns into a page of buttons. Thirty pixels at four-fifths is still a comfortable
+ * target and stops competing with the artwork it is standing on.
+ */
+@media (hover: none) {
+  .cx-tile-chip {
+    right: 8px;
+    bottom: 8px;
+    width: 30px;
+    height: 30px;
+    opacity: 0.8;
+  }
+}
+
+.cx-tile-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-tile-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Round for a person, square for a record — the sleeve is an object and a face is not.
+ *
+ * The chip moves in with the curve (a corner control on a circle floats in space), and the caption
+ * centres because a circle has no left edge for text to align to. The hover glow is already round.
+ */
+.cx-tile[data-person] .cx-tile-cov {
+  border-radius: 50%;
+}
+
+.cx-tile[data-person] .cx-tile-ov {
+  background: radial-gradient(circle at 50% 80%, rgb(0 0 0 / 40%), transparent 65%);
+}
+
+.cx-tile[data-person] .cx-tile-chip {
+  right: 6%;
+  bottom: 6%;
+}
+
+.cx-tile[data-person] .cx-tile-title,
+.cx-tile[data-person] .cx-tile-sub {
+  text-align: center;
+}
+
+/* --- track rows ----------------------------------------------------------- */
+
+.cx-trows {
+  max-width: 900px;
+}
+
+/*
+ * A running order, set like the back of a sleeve.
+ *
+ * Every row used to carry a hairline under it, which turns fourteen tracks into a table — fourteen
+ * horizontal rules arguing with the one vertical edge the page is built on. The rhythm is in the leading
+ * now, and the only row with a boundary is the one under the pointer.
+ */
+.cx-trow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 -14px;
+  padding: 0 14px;
+  border-radius: 6px;
+  transition: background 0.16s;
+}
+
+.cx-trow:hover {
+  background: rgb(255 255 255 / 4%);
+}
+
+/* The row's height is the button's own, so the whole line is the thing you press. */
+.cx-trow-main {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 0;
+  text-align: left;
+}
+
+.cx-tidx {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 24px;
+  flex: none;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t7);
+  transition: color 0.18s;
+}
+
+.cx-trow:hover .cx-tidx {
+  color: var(--t3);
+}
+
+.cx-tmeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-ttitle {
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+/* The one you are hearing, in a listing you happen to be looking at. */
+.cx-trow[data-playing] .cx-ttitle {
+  color: var(--t1);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--g) 45%, transparent);
+}
+
+.cx-tartist {
+  font-size: 11.5px;
+  color: var(--t6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-tact {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--t8);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.cx-trow:hover .cx-tact {
+  opacity: 1;
+}
+
+/* Under a pointer the queue button takes the duration's place instead of holding a cell of its own
+   open beside it, so the title has the width. */
+@media (hover: hover) {
+  .cx-trow {
+    position: relative;
+  }
+
+  .cx-tact {
+    position: absolute;
+    right: 14px;
+    width: 44px;
+    justify-items: end;
+  }
+
+  .cx-trow:hover .cx-tdur {
+    opacity: 0;
+  }
+}
+
+.cx-tact:hover {
+  color: var(--t1);
+}
+
+@media (hover: none) {
+  .cx-tact {
+    opacity: 1;
+  }
+}
+
+.cx-tdur {
+  width: 44px;
+  flex: none;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--t6);
+  transition: opacity 0.15s;
+}
+
+/* --- inputs --------------------------------------------------------------- */
+
+/*
+ * The sockets, in the same voice as the doors.
+ *
+ * They were a grid of outlined, filled cards with an icon in a rounded well — the furniture of a settings
+ * page, on the screen where you choose the turntable. A socket is a name and what it can do, so it is set
+ * the way a door is: type on a rule, the glyph reduced to a mark on the left rather than a box of its own.
+ */
+.cx-inputs {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+}
+
+.cx-input {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--hair-soft);
+  text-align: left;
+  transition: padding-left 0.28s var(--cx-ease);
+}
+
+.cx-input:hover {
+  padding-left: 8px;
+}
+
+.cx-input-ic {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--t7);
+  transition: color 0.2s;
+}
+
+.cx-input:hover .cx-input-ic {
+  color: var(--gb);
+}
+
+.cx-input-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cx-input-name {
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-input:hover .cx-input-name {
+  color: var(--t1);
+}
+
+.cx-input-sub {
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: var(--t6);
+}
+
+/* --- lining the rooms up -------------------------------------------------- */
+
+/*
+ * The alignment axis, one room to a line.
+ *
+ * The rows share a scale on purpose: the reason this control is a list and not a setting is that
+ * "the kitchen is 25 ms out" should be something you *see* by comparing two knob positions, not
+ * something you work out by reading two numbers. So the axis is the same width on every row and the
+ * names are held to a fixed column, which is what keeps the knobs comparable.
+ */
+.cx-align {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
+}
+
+.cx-align-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cx-align-name {
+  flex: none;
+  width: 34%;
+  max-width: 190px;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--t2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The room the others are measured against — a fact about the group, in the quietest voice. */
+.cx-align-name i {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--t7);
+}
+
+.cx-align-axis {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/*
+ * A native range input, dressed down.
+ *
+ * The rest of this face drags its own sliders, and for a volume that is right: it is a gesture, not a
+ * number. An offset is a number — you nudge it by five, you type nothing, you compare it with the row
+ * above — and the native control is the one that comes with arrow keys, page steps and a screen
+ * reader that says what it is.
+ */
+.cx-align-range {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  background: none;
+  /* Both spellings: the unprefixed one is what standards-mode Chromium reads, the prefixed one is
+     what makes the pseudo-element rules below take over from the native control. */
+  appearance: none;
+  -webkit-appearance: none;
+  /* Belt and braces: where the pseudo-element rules below are honoured the thumb is already this
+     colour, and where the native control survives, this is what tints it. The faders in this face
+     have white knobs on neutral rails; an offset is not more important than a volume. */
+  accent-color: var(--t1);
+  cursor: pointer;
+}
+
+/*
+ * The knob is white here, and that takes three classes to say.
+ *
+ * `styles.css` styles every range in the bundle — an accent knob with a glow, which is right on the
+ * technical surface and wrong in this one, where every fader has a white knob on a neutral rail. Its
+ * selector carries an element and an attribute, so a single class cannot beat it; the specificity
+ * here is the cost of one shared stylesheet serving two faces, and it is cheaper than a second
+ * stylesheet. Everything else about the control — the track, the fill, the sizes — is inherited from
+ * there on purpose: two implementations of a slider is how they end up different by accident.
+ */
+.cx-root .cx-align .cx-align-range::-webkit-slider-thumb {
+  background: var(--t1);
+  box-shadow: 0 0 0 3px var(--cx-bg);
+}
+
+.cx-root .cx-align .cx-align-range::-moz-range-thumb {
+  background: var(--t1);
+  box-shadow: 0 0 0 3px var(--cx-bg);
+}
+
+.cx-align-range:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.cx-align-step {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 13px;
+  color: var(--t5);
+  transition: color 0.15s, background 0.15s;
+}
+
+.cx-align-step:hover:not(:disabled) {
+  color: var(--t1);
+  background: rgb(255 255 255 / 6%);
+}
+
+.cx-align-step:disabled {
+  color: var(--t8);
+}
+
+.cx-align-value {
+  flex: none;
+  width: 76px;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--t3);
+}
+
+.cx-align-warn {
+  flex-basis: 100%;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #e4584f;
+}
+
+/* The one thing the server cannot measure, said where the measuring happens. */
+.cx-align-note {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t6);
+}
+
+/* The transport, shrunk for the band: same five controls, same handlers, less metal. */
+.cx-transport[data-size='bar'] {
+  flex: none;
+  gap: 16px;
+  margin-top: 0;
+}
+
+.cx-transport[data-size='bar'] .cx-tr-play {
+  width: 40px;
+  height: 40px;
+  box-shadow: inset 0 0 0 1.25px rgb(255 255 255 / 78%);
+}
+
+@keyframes cx-sig-flow {
+  from {
+    background-position: -90px 0;
+  }
+
+  to {
+    background-position: calc(100% + 90px) 0;
+  }
+}
+
+/* A station that re-locks lands in the accent and settles out of it. */
+
+/*
+ * The level meter: two columns against a printed scale.
+ *
+ * The gradient sits on the *track* and the fill clips it, so a bar's colour says where it is rather
+ * than how tall it is — the top of a loud column is amber because it is close to zero, and a quiet
+ * column stays green however far it happens to reach. A bar that turned amber whenever it grew would
+ * be a decoration dressed as a warning.
+ */
+/*
+ * The cell grid, written once and worn by both layers.
+ *
+ * Rows alone were right on a 20px spectrum bar and wrong here: chopped only horizontally, a 200px
+ * column is a stack of *stripes*, which is a texture from a different object entirely. Cut both ways
+ * it is a matrix of cells — the shape a level display has when it is made of lamps — and at this
+ * width that is what the eye was expecting.
+ *
+ * Two gradients intersected rather than one: `mask-composite` is what keeps a single grid in one
+ * declaration instead of a sprite that has to be regenerated whenever a size changes.
+ */
+.cx-meter {
+
+  display: flex;
+  flex: 1;
+  gap: 9px;
+  min-height: 0;
+  padding-top: 4px;
+}
+
+.cx-meter-scale {
+  position: relative;
+  flex: none;
+  width: 20px;
+  /* The letters and figures under the columns are outside the scale's own span. */
+  margin-bottom: 32px;
+}
+
+.cx-meter-scale span {
+  position: absolute;
+  right: 0;
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--t7);
+  translate: 0 50%;
+}
+
+.cx-meter-bars {
+  display: flex;
+  flex: 1;
+  /* Against the scale, not centred in whatever is left: a scale a hand's width from the columns it
+     measures is a legend, and a legend is something you have to look up. */
+  justify-content: flex-start;
+}
+
+/*
+ * Wide columns, not needles.
+ *
+ * Capped at 26px they read as two indicator lights standing in an empty tile; given the width they
+ * become what a meter on a piece of equipment is — two bands of light whose *shape* is legible from
+ * across the room, which is the whole argument for drawing a level instead of printing it.
+ */
+.cx-meter-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/*
+ * The column is a stack of cells, not a slab.
+ *
+ * Two 200px blocks of flat colour next to a spectrum made of segments read as the one object on the
+ * deck that had not been finished. The same chop, on the same 6/3 grid the display uses, does two
+ * things at once: it ties the two instruments into one piece of equipment, and it gives the eye
+ * something to count — a level you can read to the nearest cell without going to the number.
+ *
+ * The unlit cells are drawn on the *track*, so a quiet column is still a column of dark LEDs rather
+ * than an empty box, and both grids are anchored to the same bottom edge — the lit cells sit exactly
+ * on the unlit ones however far the level reaches.
+ */
+.cx-meter-bar {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+/*
+ * The unlit lamps.
+ *
+ * A quiet column is a column of dark cells rather than an empty box — the same statement the
+ * spectrum's unlit segments make, and the reason a meter at rest still looks like equipment that is
+ * switched on. Drawn on the track so the lit cells above land exactly on top of them.
+ */
+.cx-meter-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: var(--cell);
+  -webkit-mask-composite: source-in;
+  mask-image: var(--cell);
+  mask-composite: intersect;
+}
+
+/*
+ * Dim mass, bright mark — the same language the spectrum speaks.
+ *
+ * This was a saturated gradient running to red, and beside a display whose bars are a quiet green
+ * with a bright cap it read as the loudest object on the deck: a slab of light where the argument of
+ * the whole face is restraint. Flat and dim, the bar is *quantity*; the peak above it is the only
+ * thing here allowed to be bright, because it is the only thing that is telling you something.
+ *
+ * No transition, either: the ballistics live in `useAnalysis`, and CSS smoothing on top of a meter's
+ * own ballistics is two lags arguing about the same transient.
+ */
+.cx-meter-fill {
+  position: absolute;
+  inset: 0;
+  /* The lit cells, on the same grid as the unlit ones — see `.cx-meter`. */
+  -webkit-mask-image: var(--cell);
+  -webkit-mask-composite: source-in;
+  mask-image: var(--cell);
+  mask-composite: intersect;
+  /*
+   * No lit edge on the fill.
+   *
+   * It had one, and two bright lines a few pixels apart — the top of the bar and the held peak just
+   * above it — is a meter arguing with itself about which mark to read. One bright thing per column.
+   */
+}
+
+/*
+ * The held peak: the one mark that is remembering, and the one that carries the warning.
+ *
+ * Colour belongs here rather than on the bar. A bar that reddens as it grows says "loud", which the
+ * height already said; a mark that reddens says "that transient came within a decibel of the
+ * ceiling", which nothing else on the tile can say.
+ */
+.cx-meter-held {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.cx-meter-held[data-tone='hot'] {
+  box-shadow: 0 0 6px rgb(228 88 79 / 55%);
+}
+
+.cx-meter-side {
+  flex: none;
+  font-size: 8.5px;
+  font-style: normal;
+  letter-spacing: 0.16em;
+  text-align: center;
+  color: var(--t7);
+}
+
+/* Each column's own figure, under its own column: which side is louder is half of what a pair of
+   meters is for, and one number averaged across both cannot say it. */
+.cx-meter-read {
+  flex: none;
+  margin-top: -1px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--t3);
+}
+
+/* Nothing flowing: the columns stay, unlit, because a meter that vanishes reads as equipment that
+   has gone rather than as a room that is quiet. */
+.cx-meter[data-quiet] .cx-meter-fill {
+  opacity: 0.25;
+}
+
+@keyframes cx-player-up {
+  from {
+    transform: translateY(14%);
+    opacity: 0;
+  }
+}
+
+/*
+ * The install hint — see `shell/InstallHint`.
+ *
+ * A row in the flow of home rather than a banner over it: a recess, a mark, two lines and a way
+ * out. It is the one piece of chrome on this screen that is about the *app* rather than the music,
+ * so it is the quietest thing on it — and pressing the cross means never again on this browser.
+ */
+.cx-install {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-top: 36px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+  text-align: left;
+}
+
+.cx-install-mark {
+  width: 30px;
+  height: 24px;
+  flex: none;
+  color: var(--accent);
+}
+
+.cx-install-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cx-install-title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--t2);
+}
+
+.cx-install-sub {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--t6);
+}
+
+.cx-install-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 9%);
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t1);
+  transition: transform 0.15s var(--cx-ease);
+}
+
+.cx-install-go:active {
+  transform: scale(0.95);
+}
+
+.cx-install-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  color: var(--t7);
+}
+
+/*
+ * The bar and the nav, as one plate at the foot of the phone.
+ *
+ * Two problems, one answer. The bar was built for a desk — 26px gaps, a 30px inset, a volume fader
+ * on the end — and at 390px that arithmetic left the title about two characters: `B.` over `A…`.
+ * And the nav was translucent over the artwork wash, so it took the record's colour: a teal strip
+ * under a black page, the one part of the screen wearing a tint nothing else had.
+ *
+ * So the two become one surface: opaque, neutral, near-black, with a single hairline along the top
+ * of the *assembly* rather than one between its halves, and the position drawn on that hairline —
+ * the progress *is* the top edge. The record's colour lives on the screens the record is on; the
+ * furniture underneath is furniture.
+ */
+@media (max-width: 979px) {
+
+  /*
+   * The two bars are pinned to the viewport, not stacked at the end of a column.
+   *
+   * This is the fix for the black band under the tab bar in the installed app, and it is a
+   * structural answer rather than another guess at a height. As flex children the bars inherit
+   * whatever the shell believes the window to be — and on iOS, installed with a translucent
+   * status bar, that belief is short by the status bar's own height, so the column ends early and
+   * the bars end with it. Three attempts to correct the belief (a `display-mode` media query,
+   * `--app-h` from `innerHeight`, anchoring the face with `position: fixed`) each shipped without
+   * moving them.
+   *
+   * `position: fixed; bottom: 0` does not consult the belief: it resolves against the viewport
+   * itself, which is where the screen's bottom edge actually is. The previous player (`player.x`)
+   * pins its bar and its mini player exactly this way and has always sat correctly on this
+   * hardware — the pattern is borrowed rather than invented.
+   *
+   * The column then pads itself to clear them, by the same arithmetic, so nothing scrolls behind
+   * a bar it cannot see past.
+   */
+  .cx-root {
+    --nav-h: calc(56px + env(safe-area-inset-bottom));
+    --mini-h: 60px;
+  }
+
+  .cx-root .cx-body {
+    padding-bottom: var(--nav-h);
+  }
+
+}
+
+/* --- a short phone -------------------------------------------------------- */
+
+/*
+ * Compact mode, below 620px of height.
+ *
+ * A phone in landscape, a small handset, a browser with a keyboard open. The canvas takes its height first
+ * (`flex: none`) and the player below it is what gives way — so the way this stays on screen is by making
+ * everything *except* the artwork smaller, in the order it can afford to.
+ *
+ * So everything *else* gets smaller first, in the order it can afford to: the title to one line and 28px,
+ * the transport in from 60px, the gaps in, and the next-up line out — it is the only row here whose
+ * content is also a whole tab in the nav two rows below it.
+ */
+@media (max-height: 620px) {
+
+  .cx-transport[data-size='phone'] {
+    gap: 24px;
+    margin-top: 8px;
+  }
+
+  .cx-transport[data-size='phone'] .cx-tr-play {
+    width: 50px;
+    height: 50px;
+  }
+
+}
+
+/* --- a phone on its side -------------------------------------------------- */
+
+/*
+ * Landscape: two columns, because one column cannot be done honestly here.
+ *
+ * At 844×390 there are about 270 usable pixels of height, and the portrait layout needs a square cover
+ * plus six stacked control rows in them. Something has to lose, and in a stack the artwork always does —
+ * it was the only flexible row, so it was clipped to a 40px sliver behind the header while a two-line
+ * title and a 50px play button kept everything they had. That is the wrong outcome on the one screen
+ * whose subject is the sleeve.
+ *
+ * Sideways, width is what is plentiful, so the sleeve takes the full height as a square on the left and
+ * the controls take the rest on the right — the same argument the desktop stage makes, at a tenth of the
+ * size. Not a `min-width` breakpoint but `orientation` plus a height cap, because what makes this layout
+ * necessary is the shape of the window, not how big it is: a tall 390px-wide phone must not get it.
+ */
+@media (max-width: 979px) and (max-height: 520px) and (orientation: landscape) {
+
+  /*
+   * The timeline stays horizontal, on the canvas's bottom edge.
+   *
+   * Turning it to follow the right edge does not work and is not worth making work: the rail is a
+   * `width: 100%` track whose fill grows by width, so rotating its container gives a 2px-tall bar 24px
+   * long rather than a vertical one. A horizontal bar along the bottom of a square canvas is still a bar
+   * on the canvas's edge, which is the whole idea.
+   */
+
+  .cx-transport[data-size='phone'] {
+    justify-content: flex-start;
+    gap: clamp(18px, 3vw, 30px);
+  }
+
+}
+
+/* --- artwork that moves --------------------------------------------------- */
+
+/*
+ * The moving sleeve, over the still one.
+ *
+ * Absolutely positioned and `object-fit: cover` so it lands exactly on the still underneath whatever the
+ * shape of its container — a square tile, a half-window sleeve, a full-bleed phone canvas. It fades in
+ * only once frames are arriving (`data-on`, set on the element's own `playing` event), so a cover that has
+ * motion and a cover that does not look identical until the moment one of them starts moving. Nothing
+ * jumps, nothing goes black, nothing has to be waited for.
+ *
+ * 1.2s, which is slower than any other fade in this face. A sleeve that comes alive should be something you
+ * notice having happened rather than something you watch happen.
+ */
+.cx-motion {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.2s var(--cx-ease);
+}
+
+.cx-motion[data-on] {
+  opacity: 1;
+}
+
+/* On a tile the still is the resting state, so its motion leaves as deliberately as it arrives. */
+.cx-tile .cx-motion {
+  transition: opacity 0.5s var(--cx-ease);
+}
+
+/* --- left alone ----------------------------------------------------------- */
+
+/*
+ * After a minute, the screen becomes the record.
+ *
+ * This is the state a wall panel is in for most of its life, and it is therefore the state most worth
+ * designing — not a screensaver bolted on the side but the same screen with everything that is *about
+ * using it* faded out: the top bar, the transport, the timeline, the volume, the queue line, the dock.
+ * What is left is the sleeve, the title, the artist and a clock, on a page lit by the record's own
+ * colour.
+ *
+ * Nothing unmounts and nothing moves position — `opacity` and `visibility` only, on a slow 1.4s ramp, so
+ * waking is instantaneous and lands you exactly where you were rather than reassembling the page in front
+ * of you. `visibility` rather than `pointer-events: none` alone, because a keyboard must not be able to tab
+ * into a control nobody can see.
+ *
+ * The artwork *grows* as the chrome leaves, which is the whole gesture: the record taking the room.
+ */
+.cx-root[data-idle] .cx-transport,
+.cx-root[data-idle] .cx-bar-wrap,
+.cx-root[data-idle] .cx-times,
+.cx-root[data-idle] .cx-stage-foot,
+.cx-root[data-idle] .cx-fav {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 1.4s var(--cx-ease),
+    visibility 1.4s step-end,
+    max-height 1.4s var(--cx-ease),
+    margin 1.4s var(--cx-ease);
+}
+
+/*
+ * And they give their space back, not just their ink.
+ *
+ * Fading alone left holes. On a phone the transport, the volume and the room chips are four stacked rows
+ * *below* the title, so hiding them without collapsing them pinned the record to the top of the screen
+ * with half a screen of nothing under it — the opposite of restful. Collapsing the height as well lets
+ * the remaining block re-centre over 1.4s, which is the record settling rather than the page emptying.
+ *
+ * `max-height` rather than `height` because none of these has an explicit height to animate from, and
+ * `overflow: hidden` so the collapse clips instead of spilling. The dock is included on purpose: the
+ * desktop stage grows into the 58px it gives up, so the sleeve ends the transition genuinely centred in
+ * the window rather than centred above a bar that is no longer there.
+ */
+.cx-root[data-idle] .cx-transport,
+.cx-root[data-idle] .cx-bar-wrap,
+.cx-root[data-idle] .cx-times,
+.cx-root[data-idle] .cx-stage-foot {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+/*
+ * A third line, since there is room for it.
+ *
+ * The stage clamps a title to two lines because a third means it has become a paragraph next to
+ * everything else on the screen. At rest there *is* nothing else on the screen, and `Natural Blues
+ * (feat. Gregory Porter &…` truncated is the one thing on a poster that should never be truncated.
+ */
+.cx-root[data-idle] .cx-title {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/* The eyebrow stays, one step quieter: which room this is playing in is part of what the panel is for. */
+.cx-root[data-idle] .cx-eyebrow {
+  color: var(--t7);
+}
+
+.cx-root[data-idle] .cx-stage-inner {
+  gap: clamp(44px, 5.5vw, 88px);
+  transition: gap 1.4s var(--cx-ease);
+}
+
+.cx-root[data-idle] .cx-cover {
+  scale: 1.06;
+  transition: scale 1.8s var(--cx-ease);
+}
+
+/*
+ * The desk at rest: the record hung on the wall, with a label under it.
+ *
+ * The resting state was the composition with its chrome faded — the sleeve grew 6% and stayed in a
+ * two-column block beside a 100px title, which is the *player* with the controls taken away. What a
+ * screen with nothing else on it should be is the picture: 78vh of sleeve, centred, and everything the
+ * page still has to say folded into a caption under it at the size a gallery prints one.
+ *
+ * The type is the change that makes it a picture rather than a poster. A title set at 100px is the
+ * subject of the screen and correct while there are controls to out-rank; alone above a 1100px sleeve it
+ * is a headline arguing with a painting. At 30px it is a label — you read the picture, and then, if you
+ * want, you read what it is.
+ *
+ * Desk only. The phone's resting state is a different problem and already solved: there the sleeve is
+ * full-bleed by default and the title *is* what the room reads from four metres away.
+ */
+@media (min-width: 980px) {
+  /*
+   * How big the picture is, once, for the sleeve and for the label that has to be exactly as wide.
+   *
+   * `88vh minus the label` rather than a flat share of the height, because the label does not scale
+   * with the window: a title, an artist, an album and a room are about 150px of type whether the screen
+   * is 800px tall or 1440. A flat `74vh` therefore fits on the big screen it was tuned against and hangs
+   * 23px outside a 1280x800 laptop — and a canvas that scrolls is not a canvas. Subtracting the fixed
+   * part first is the whole difference: it makes the *picture* take the slack, which is what slack is
+   * for, and on a 1440px monitor it is 51px larger than the flat cap was rather than smaller.
+   *
+   * Still capped by width, so a wide-and-short window hangs the picture rather than cropping the page.
+   */
+  .cx-root[data-idle] .cx-stage-inner {
+    --cx-doek: min(calc(88vh - 150px), 62vw);
+  }
+
+  .cx-root[data-idle] .cx-stage-art {
+    --cx-cover-size: var(--cx-doek);
+  }
+
+  /*
+   * One column: the picture, then its label.
+   *
+   * `height: auto` is load-bearing — the row is 100% tall so its two columns centre against the
+   * window rather than against each other, and a *column* that is 100% tall stacks its children at the
+   * top of it instead of centring the pair.
+   */
+  .cx-root[data-idle] .cx-stage-inner {
+    /* The picture's label stands where the reflection would; no floor to leave, no padding to give. */
+    padding-bottom: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(22px, 3vh, 44px);
+    height: auto;
+    transition:
+      gap 1.4s var(--cx-ease),
+      height 1.4s var(--cx-ease);
+  }
+
+  /* The label is as wide as what it labels, and centred under it. */
+  .cx-root[data-idle] .cx-stage-meta {
+    align-items: center;
+    width: var(--cx-doek);
+    text-align: center;
+  }
+
+  .cx-root[data-idle] .cx-title {
+    margin-top: 0;
+    margin-left: 0;
+    font-size: clamp(21px, 2.6vh, 34px);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    /*
+     * Two lines, against the third this state grants everywhere else.
+     *
+     * That third line is right for the poster — where the title is the subject and there is nothing
+     * under it — and wrong for a label, which has to stay a fixed block under a picture whose height is
+     * already spoken for. At 34px a third line is 37px, and 37px is the difference between a canvas
+     * that hangs in the window and one the window has to scroll.
+     */
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .cx-root[data-idle] .cx-artistrow {
+    justify-content: center;
+    margin-top: 7px;
+  }
+
+  .cx-root[data-idle] .cx-artist {
+    font-size: 15px;
+  }
+
+  .cx-root[data-idle] .cx-album {
+    font-size: 12.5px;
+  }
+
+  /* The room and where the sound came from: the label's first line, the way a gallery card names the
+     collection before it names the work. Already one step quieter in this state (see the `--t7` rule
+     above), so it holds its size rather than shrinking with everything else. */
+  .cx-root[data-idle] .cx-eyebrow {
+    justify-content: center;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+  }
+
+  /* The 6% nudge was how the old resting state said "bigger". The layout says it now, and 6% on top of
+     78vh is how a picture ends up cropped by the window it is hanging in. */
+  .cx-root[data-idle] .cx-cover {
+    scale: 1;
+  }
+
+  /*
+   * And the sleeve stops offering to be pressed.
+   *
+   * Everything else on this screen has withdrawn, and a play glyph fading up under the pointer is the
+   * one thing left behaving like a control — which happens by accident the moment you ask for the
+   * picture, because the layout reflows and the sleeve arrives *under* the cursor that just pressed
+   * `canvas`. It still takes the click; it simply stops advertising it, the way a picture does.
+   */
+  .cx-root[data-idle] .cx-cover-hover {
+    opacity: 0;
+  }
+}
+
+/*
+ * The clock.
+ *
+ * Top-right, in the display face at a size that reads across a room, and dim enough that it is the second
+ * thing you see. It is only mounted while dimmed, so it fades in on its own rather than being another
+ * thing that has to hide.
+ */
+.cx-idle-clock {
+  position: absolute;
+  top: clamp(20px, 3vh, 40px);
+  right: clamp(24px, 3vw, 52px);
+  z-index: 4;
+  font-size: clamp(30px, 4.4vw, 58px);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--t6);
+  pointer-events: none;
+  /* Its own wander, off the stage's period (300s against 240s), so the two never read as one
+     rigid plate sliding around — the clock and the record drift like things in the same slow water. */
+  animation:
+    cx-clock-in 1.6s var(--cx-ease) both,
+    cx-wander 300s ease-in-out infinite;
+}
+
+@keyframes cx-clock-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The date, a size class below the time: what a clock on a wall knows. */
+.cx-idle-date {
+  display: block;
+  margin-top: 7px;
+  font-size: clamp(9px, 0.9vw, 11px);
+  font-style: normal;
+  letter-spacing: 0.32em;
+  color: var(--t7);
+}
+
+.cx-idle-next {
+  position: absolute;
+  left: clamp(24px, 3vw, 48px);
+  bottom: clamp(20px, 3vh, 36px);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 40vw;
+  pointer-events: none;
+  animation: cx-clock-in 1.6s var(--cx-ease) both;
+}
+
+.cx-idle-next-cov {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  opacity: 0.8;
+}
+
+.cx-idle-next-lbl {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  font-style: normal;
+  color: var(--t8);
+}
+
+.cx-idle-next-txt {
+  overflow: hidden;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--t7);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * And, very slowly, everything sharp wanders.
+ *
+ * A wall panel is on for years, and the poster state is exactly the state that burns one in: the
+ * same sleeve edge, the same clock digits, hours at a stretch. So while the room rests, everything
+ * with a hard edge drifts through a hand's breadth of pixels on a cycle measured in minutes — far
+ * below what an eye notices in the moment, far above what an OLED needs to stay healthy. The
+ * washes already live on their own 90s drift; this moves the sharp things over them. Waking snaps
+ * nothing: the wander is `transform`-only, and the ramp back happens inside the same 1.4s the
+ * chrome takes to return.
+ */
+.cx-root[data-idle] .cx-stage-inner {
+  animation: cx-wander 240s ease-in-out infinite;
+}
+
+@keyframes cx-wander {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  25% {
+    transform: translate3d(7px, -5px, 0);
+  }
+
+  50% {
+    transform: translate3d(-5px, -9px, 0);
+  }
+
+  75% {
+    transform: translate3d(-8px, 6px, 0);
+  }
+}
+
+/*
+ * The record's position, as light on the floor of the screen.
+ *
+ * Not a bar — no rail, no knob, nothing to invite a hand. A hairline of the record's own accent,
+ * growing left to right, faint enough to ignore and present enough to answer the one glance a
+ * poster gets from across the room: *how far in are we*. It rides `width` on a 1s linear
+ * transition because position ticks arrive once a second — the light glides instead of stepping.
+ */
+.cx-idle-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  height: 2px;
+  pointer-events: none;
+}
+
+.cx-idle-progress i {
+  display: block;
+  height: 100%;
+  background: var(--g);
+  opacity: 0.22;
+  transition: width 1s linear;
+  animation: cx-clock-in 1.6s var(--cx-ease) both;
+}
+
+/* --- focus + motion ------------------------------------------------------- */
+
+.cx-root :focus-visible {
+  /*
+   * The ring: a half-strength outline with a faint halo, in silver like every other control. A player has a lot of small round buttons, so the offset is a pixel wider
+   * here — a 2px ring hard against a 44px circle reads as a border on the button.
+   *
+   * No `border-radius` here, deliberately. It used to set one, and that does not round the *ring* —
+   * it rounds the focused element, which then drags the ring's shape along with it. An outline
+   * already follows whatever radius the thing it surrounds has, so saying nothing is what makes a
+   * circular button get a circular ring and a segmented control keep its square inner edge.
+   */
+  outline: 2px solid rgb(255 255 255 / 55%);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 12%);
+}
+
+/*
+ * The live indicators keep breathing: they are the difference between "this room is playing" and
+ * "this room is selected", and there is no static way to say it. Everything else stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cx-root *:not(.cx-live-dot):not(.cx-stale) {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+
+  /*
+   * The level meter still has to look like one when it stops.
+   *
+   * Cutting the animation to 1ms lands every bar on its last keyframe — `scaleY(0.35)` — so the mark for
+   * "this is the one playing" becomes three stubs a third of their height. Dropping the transform instead
+   * leaves the bars at the staggered heights they are drawn at, which is the icon, standing still.
+   */
+  .cx-bars i {
+    transform: none !important;
+  }
+}
+
+.cx-hsec {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: clamp(26px, 4vh, 40px);
+}
+
+.cx-hsec-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.cx-hsec-lbl {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: var(--t6);
+}
+
+.cx-hsec-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+
+.cx-hsec-right {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--t7);
+}
+
+/* ==========================================================================================
+ * The desk: rooms as channel strips, groups as blocks. See `Channels.tsx`.
+ * ========================================================================================== */
+
+@media (min-width: 980px) {
+  .cx-sheet[data-desk] {
+    width: min(1080px, calc(100% - 48px));
+  }
+
+  /* A big house gets a big desk: past eight channels a wide screen holds twelve to a row, not eight. */
+}
+
+/* ==========================================================================================
+ * The catalogue: actions as pills, the sleeve's edge the same hairline as everywhere.
+ * ========================================================================================== */
+
+.cx-browse-actions {
+  gap: 12px;
+}
+
+.cx-detail-cover {
+  box-shadow:
+    0 30px 80px -30px rgb(0 0 0 / 85%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+/* ==========================================================================================
+ * Second pass toward the concept.
+ * ========================================================================================== */
+
+/* --- stage: the record colours the room, the fader has its number, the timeline answers a hover --- */
+
+.cx-vol-num {
+  min-width: 2ch;
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  color: var(--t4);
+  text-align: right;
+}
+
+.cx-stage .cx-bar:hover .cx-bar-rail {
+  height: 5px;
+}
+
+.cx-stage .cx-bar:hover .cx-bar-knob {
+  display: block;
+}
+
+.cx-stage .cx-bar-knob {
+  background: var(--t1);
+  box-shadow: 0 0 0 3px var(--cx-bg);
+}
+
+/* --- the album: two columns of tracks, the sleeve clear of the back word --- */
+
+@media (min-width: 1180px) {
+  .cx-browse-inner[data-detail] > .cx-browse-back {
+    margin-bottom: 14px;
+  }
+
+  .cx-browse-inner[data-detail] .cx-detail {
+    top: 14px;
+  }
+
+  .cx-browse-inner[data-detail] .cx-trows {
+    max-width: none;
+    column-count: 2;
+    column-gap: 56px;
+  }
+
+  .cx-browse-inner[data-detail] .cx-trow {
+    break-inside: avoid;
+    margin: 0;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--hair);
+    border-radius: 0;
+  }
+}
+
+.cx-detail-title {
+  font-size: clamp(30px, 3.6vw, 52px);
+  letter-spacing: -0.04em;
+}
+
+.cx-detail-kind {
+  color: var(--t6);
+}
+
+/* --- the queue: rows at the concept's height, sleeves at 44px --- */
+
+.cx-qrow {
+  gap: 14px;
+  padding: 8px 8px;
+}
+
+.cx-qcov {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 3px !important;
+}
+
+/* --- the reading on a phone: the band in three rows, no tab bar under an instrument --- */
+
+@media (max-width: 979px) {
+
+  .cx-root[data-view='signal'] .cx-body {
+    padding-bottom: 0 !important;
+  }
+
+  .cx-transport[data-size='bar'] {
+    grid-area: transport;
+    gap: 10px;
+  }
+
+  .cx-transport[data-size='bar'] .cx-tr-side {
+    display: none;
+  }
+
+}
+
+/* ==========================================================================================
+ * Third pass: the level meter in segments, the queue in sections, the billboard unboxed.
+ * ========================================================================================== */
+
+/* --- the level meter: one column of 4px segments per channel, the held peak a lit segment --- */
+
+.cx-meter {
+  --cell: repeating-linear-gradient(to top, #000 0 4px, transparent 4px 7px);
+}
+
+.cx-meter-bars {
+  gap: 14px;
+}
+
+.cx-meter-column {
+  max-width: 96px;
+}
+
+.cx-meter-side {
+  display: none;
+}
+
+.cx-meter-bar::before {
+  background: rgb(255 255 255 / 5%);
+}
+
+.cx-meter-fill {
+  background: rgb(212 214 218 / 55%);
+  clip-path: inset(calc(100% - var(--lvl, 0%)) 0 0 0);
+}
+
+.cx-meter-held {
+  top: auto;
+  bottom: var(--held, 0%);
+  height: 4px;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.cx-meter-held[data-tone='warm'] {
+  background: #e7b75a;
+}
+
+.cx-meter-held[data-tone='hot'] {
+  background: #e4584f;
+}
+
+/* Lying down, on a phone: L and R as two rows, the segments running to the right. */
+@media (max-width: 979px) {
+  .cx-meter {
+    --cell: repeating-linear-gradient(to right, #000 0 8px, transparent 8px 11px);
+    flex-direction: column;
+    min-height: 0;
+    padding-top: 0;
+  }
+
+  .cx-meter-scale {
+    display: none;
+  }
+
+  .cx-meter-bars {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cx-meter-column {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    max-width: none;
+  }
+
+  .cx-meter-side {
+    display: block;
+    width: 10px;
+    font-size: 9px;
+    color: var(--t6);
+  }
+
+  .cx-meter-bar {
+    flex: 1;
+    height: 12px;
+  }
+
+  .cx-meter-fill {
+    clip-path: inset(0 calc(100% - var(--lvl, 0%)) 0 0);
+  }
+
+  .cx-meter-held {
+    top: 0;
+    bottom: 0;
+    left: var(--held, 0%);
+    right: auto;
+    width: 4px;
+    height: auto;
+  }
+
+  .cx-meter-read {
+    width: 42px;
+    text-align: right;
+  }
+}
+
+/* --- the queue in sections --- */
+
+.cx-qsheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cx-qnow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'cov txt ring'
+    'bar bar bar';
+  align-items: center;
+  gap: 8px 16px;
+  padding-bottom: 6px;
+}
+
+.cx-qnow-cov {
+  grid-area: cov;
+  width: 72px;
+  height: 72px;
+  border-radius: 3px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 16px 40px -16px rgb(0 0 0 / 85%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.cx-qnow-txt {
+  grid-area: txt;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cx-qnow-lbl {
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  color: var(--g);
+}
+
+.cx-qnow-title {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--t1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-qnow-sub {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--t5);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-qnow-ring {
+  grid-area: ring;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgb(223 226 230 / 90%);
+  color: var(--t1);
+  transition: transform 0.15s var(--cx-ease);
+}
+
+.cx-qnow-ring:active {
+  transform: scale(0.94);
+}
+
+.cx-qnow-bar {
+  grid-area: bar;
+  display: block;
+}
+
+.cx-qnow-bar .cx-times {
+  margin-top: 8px;
+  font-size: 10.5px;
+}
+
+.cx-qsec {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.cx-qsec-lbl {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: var(--t6);
+}
+
+.cx-qsec-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+
+.cx-qsec-act {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t6);
+  transition: color 0.18s;
+}
+
+.cx-qsec-act:hover,
+.cx-qsec-act[data-on] {
+  color: var(--t2);
+}
+
+.cx-qadd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 56px;
+  border: 1px dashed rgb(255 255 255 / 14%);
+  border-radius: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t6);
+  transition:
+    color 0.18s,
+    border-color 0.18s;
+}
+
+.cx-qadd:hover {
+  color: var(--t2);
+  border-color: rgb(255 255 255 / 28%);
+}
+
+.cx-qplayed > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.cx-qplayed > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cx-qplayed[open] > summary .cx-qsec-act {
+  color: var(--t3);
+}
+
+.cx-qearlier {
+  opacity: 0.7;
+}
+
+/* The title, at poster size on a wide window: the ladder's cap goes from 76 to 96. */
+@media (min-width: 1500px) {
+  .cx-title {
+    font-size: clamp(38px, min(6.4vh, 4.8vw), 96px);
+  }
+}
+
+.cx-inputs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 460px;
+  margin-top: 8px;
+}
+
+.cx-inputs-empty-txt {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--t4);
+}
+
+.cx-inputs-empty-go {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* A quiet room's invitation: what the house is playing, and one word to listen along. */
+.cx-else {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 26px;
+  padding: 12px 16px 12px 14px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 6px;
+  text-align: left;
+  transition:
+    border-color 0.18s,
+    background 0.18s;
+}
+
+.cx-else:hover {
+  border-color: rgb(255 255 255 / 22%);
+  background: rgb(255 255 255 / 3%);
+}
+
+.cx-else-txt {
+  font-size: 13px;
+  color: var(--t4);
+}
+
+.cx-else-room {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--t2);
+}
+
+.cx-else-go {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--g);
+}
+
+/* ==========================================================================================
+ * Browse: calmer tiles, a roomier grid, songs as rows.
+ * ========================================================================================== */
+
+/* A tile's words are a caption, not a headline: regular weight, the body face, the artist a step down. */
+.cx-tile-title {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--t2);
+}
+
+.cx-tile-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--t6);
+}
+
+.cx-grid {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 30px 24px;
+}
+
+.cx-shelf {
+  margin-bottom: clamp(38px, 5vh, 54px);
+}
+
+.cx-browse-head {
+  margin-bottom: 34px;
+}
+
+/* Songs in a shelf are rows, not tiles: a sleeve at 44px, the name, who, how long. */
+.cx-trows[data-cols] .cx-trow {
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  break-inside: avoid;
+}
+
+@media (min-width: 1180px) {
+  .cx-trows[data-cols] {
+    max-width: none;
+    column-count: 2;
+    column-gap: 56px;
+  }
+}
+
+.cx-tthumb {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 2px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.cx-trow[data-thumb] .cx-tidx {
+  display: none;
+}
+
+/* Two across on a phone: a 168px minimum made the grid one column at 390px. */
+@media (max-width: 979px) {
+  .cx-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 22px 14px;
+  }
+}
+
+/* At the front there is no page title: the word MUSIC is lit in the bar. The search stays. */
+.cx-browse-inner[data-root] .cx-browse-title {
+  display: none;
+}
+
+.cx-browse-inner[data-root] .cx-browse-title-row {
+  justify-content: flex-end;
+}
+
+.cx-browse-inner[data-root] .cx-browse-head {
+  margin-bottom: 8px;
+}
+
+/* --- a service's front: the record is the head, the service's name its eyebrow --- */
+
+.cx-browse-inner[data-spotlight]:not([data-root]) .cx-browse-title-row {
+  align-items: center;
+}
+
+.cx-browse-inner[data-spotlight]:not([data-root]) .cx-browse-head {
+  margin-bottom: 6px;
+}
+
+.cx-browse-inner[data-root] .cx-browse-back {
+  display: none;
+}
+
+.cx-browse-inner[data-root] {
+  padding-top: 14px;
+}
+
+/* A service's front: the way back, the service's name and the search share one line. */
+.cx-browse-inner[data-spotlight]:not([data-root]) {
+  padding-top: 18px;
+}
+
+.cx-browse-inner[data-spotlight]:not([data-root]) .cx-browse-back {
+  margin-bottom: 12px;
+}
+
+/* ==========================================================================================
+ * A service's pages: the contents in the margin, the shelves beside it, a lead on every shelf.
+ * ========================================================================================== */
+
+@media (min-width: 1180px) {
+  .cx-browse-body[data-toc] {
+    display: grid;
+    grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
+    column-gap: clamp(40px, 4vw, 72px);
+    align-items: start;
+  }
+
+  .cx-browse-body[data-toc] > * {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .cx-browse-body[data-toc] > .cx-bill,
+  .cx-browse-body[data-toc] > .cx-about {
+    grid-column: 1 / -1;
+  }
+
+  .cx-browse-body[data-toc] > .cx-toc {
+    grid-column: 1;
+    grid-row: 2 / span 40;
+    position: sticky;
+    top: 12px;
+  }
+
+  /* The bleed on the right stays; the rows now start at the column, not the page. */
+  .cx-browse-body[data-toc] .cx-shelf-row {
+    padding-left: 0;
+  }
+}
+
+.cx-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.cx-toc-lbl {
+  margin-bottom: 14px;
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: var(--t6);
+}
+
+.cx-toc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair-soft);
+  text-align: left;
+  transition: padding-left 0.3s var(--cx-ease);
+}
+
+.cx-toc-item:last-child {
+  border-bottom: 0;
+}
+
+.cx-toc-item:hover {
+  padding-left: 6px;
+}
+
+.cx-toc-name {
+  font-size: clamp(18px, 1.3vw, 22px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--t4);
+  transition: color 0.2s;
+}
+
+.cx-toc-item:hover .cx-toc-name {
+  color: var(--t1);
+}
+
+.cx-toc-sub {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--t7);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Every shelf opens with a lead: the first record twice the size, its caption in the display face. */
+.cx-browse-body[data-toc] .cx-shelf-row {
+  --tile: clamp(140px, 11vw, 176px);
+  --tgap: clamp(18px, 1.8vw, 28px);
+  align-items: flex-end;
+  gap: var(--tgap);
+}
+
+.cx-browse-body[data-toc] .cx-shelf-row .cx-tile {
+  width: var(--tile);
+}
+
+.cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child {
+  width: calc(2 * var(--tile) + var(--tgap));
+}
+
+.cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child .cx-tile-title {
+  margin-top: 14px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  color: var(--t1);
+}
+
+.cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child .cx-tile-sub {
+  font-size: 13px;
+}
+
+/* The shelf heads inside a service: the same voice as the sections, not a second size of title. */
+
+.cx-browse-body[data-toc] .cx-doorshelf-head {
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 18px;
+}
+
+.cx-browse-body[data-toc] .cx-doorshelf-head::after {
+  content: '';
+  order: 1;
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+
+.cx-browse-body[data-toc] .cx-doorshelf-go {
+  order: 2;
+  margin-left: 0;
+}
+
+.cx-browse-body[data-toc] .cx-doors .cx-doorshelf {
+  margin: 0 0 clamp(38px, 5vh, 54px);
+}
+
+/* On a phone the contents is a row of words to scroll through above the shelves. */
+@media (max-width: 1179px) {
+  .cx-toc {
+    flex-direction: row;
+    gap: 22px;
+    padding: 4px 0 22px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 88%, transparent);
+  }
+
+  .cx-toc::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cx-toc-lbl {
+    display: none;
+  }
+
+  .cx-toc-item {
+    flex: none;
+    padding: 0;
+    border: 0;
+  }
+
+  .cx-toc-item:hover {
+    padding-left: 0;
+  }
+
+  .cx-toc-name {
+    font-size: 17px;
+  }
+
+  .cx-toc-sub {
+    display: none;
+  }
+}
+
+/* The shelf with a lead is a grid: the lead 2×2, the rest in columns of two beside it, scrolling
+   sideways. No void above the small sleeves; the lead's height is the shelf's. */
+@media (min-width: 1180px) {
+  .cx-browse-body[data-toc] .cx-shelf-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: auto auto;
+    grid-auto-columns: var(--tile);
+    align-items: start;
+  }
+
+  .cx-browse-body[data-toc] .cx-shelf-row .cx-tile {
+    width: auto;
+  }
+
+  .cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child {
+    grid-row: 1 / span 2;
+    grid-column: span 2;
+    width: auto;
+  }
+}
+
+/* Below that width there is no lead: equal tiles, as everywhere else. */
+@media (max-width: 1179px) {
+  .cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child {
+    width: var(--tile);
+  }
+
+  .cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child .cx-tile-title {
+    margin-top: 12px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--t2);
+  }
+
+  .cx-browse-body[data-toc] .cx-shelf-row .cx-tile:first-child .cx-tile-sub {
+    font-size: 12px;
+  }
+}
+
+/* Below the wide layout the contents row follows the record, not precedes it. */
+@media (max-width: 1179px) {
+  .cx-browse-body[data-toc] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cx-browse-body[data-toc] > .cx-toc {
+    order: 1;
+    margin-top: -6px;
+  }
+
+  .cx-browse-body[data-toc] > .cx-bill {
+    order: 0;
+  }
+
+  .cx-browse-body[data-toc] > *:not(.cx-toc):not(.cx-bill) {
+    order: 2;
+  }
+}
+
+/* ==========================================================================================
+ * The ultimate pass: leads everywhere, the room named on a record, a queue you can rearrange.
+ * ========================================================================================== */
+
+/* A shelf of records opens with a lead wherever it stands — search results and provider sections too. */
+@media (min-width: 1180px) {
+  .cx-shelf[data-lead] .cx-shelf-row {
+    --tile: clamp(140px, 11vw, 176px);
+    --tgap: clamp(18px, 1.8vw, 28px);
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: auto auto;
+    grid-auto-columns: var(--tile);
+    gap: var(--tgap);
+    align-items: start;
+  }
+
+  .cx-shelf[data-lead] .cx-shelf-row .cx-tile {
+    width: auto;
+  }
+
+  .cx-shelf[data-lead] .cx-shelf-row .cx-tile:first-child {
+    grid-row: 1 / span 2;
+    grid-column: span 2;
+  }
+
+  .cx-shelf[data-lead] .cx-shelf-row .cx-tile:first-child .cx-tile-title {
+    margin-top: 14px;
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--t1);
+  }
+
+  .cx-shelf[data-lead] .cx-shelf-row .cx-tile:first-child .cx-tile-sub {
+    font-size: 13px;
+  }
+}
+
+/* The room a record will play in, at the end of its actions. */
+.cx-browse-actions {
+  flex-wrap: wrap;
+  row-gap: 14px;
+}
+
+.cx-browse-room {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-basis: 100%;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--t6);
+}
+
+/* The time on the right is a button; it looks like the number it is. */
+.cx-time-tot {
+  font-size: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  transition: color 0.18s;
+}
+
+.cx-time-tot:hover {
+  color: var(--t2);
+}
+
+/* --- the queue: pick a row up --- */
+
+.cx-qrow {
+  position: relative;
+}
+
+.cx-qgrip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--t8);
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.cx-qrow:hover .cx-qgrip {
+  opacity: 1;
+}
+
+.cx-qgrip:hover {
+  color: var(--t4);
+}
+
+.cx-qrow[data-dragging] {
+  z-index: 5;
+  background: rgb(22 22 26 / 96%);
+  box-shadow:
+    0 20px 50px -20px rgb(0 0 0 / 90%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+  cursor: grabbing;
+}
+
+.cx-qrow[data-dragging] .cx-qgrip {
+  opacity: 1;
+  cursor: grabbing;
+}
+
+.cx-qrow[data-over]::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--g);
+}
+
+@media (max-width: 979px) {
+  .cx-qgrip {
+    opacity: 0.6;
+  }
+}
+
+/* A held row lets the pointer through, so the row under it is the one that answers "where". */
+.cx-qrow[data-dragging] {
+  pointer-events: none;
+}
+
+/* A record's title steps down with its length, the way the stage's does. */
+.cx-detail-title[data-len='3'] {
+  font-size: clamp(26px, 2.6vw, 40px);
+}
+
+.cx-detail-title[data-len='4'] {
+  font-size: clamp(22px, 2.1vw, 32px);
+  letter-spacing: -0.03em;
+}
+
+.cx-detail-title[data-len='5'] {
+  font-size: clamp(20px, 1.8vw, 27px);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+/* ==========================================================================================
+ * The stage, composed for a wide screen: a compact column centred on the sleeve, a real shelf, a real
+ * fader, the edition under the name. And the reading's two footnotes stand where they belong.
+ * ========================================================================================== */
+
+/* The column is as tall as its contents and centred on the sleeve — not stretched to the sleeve's height
+   with the foot pinned to the bottom, which left a quarter of the screen empty between transport and shelf. */
+.cx-stage-meta {
+  align-self: center;
+  width: min(820px, 44vw);
+}
+
+.cx-stage-foot {
+  align-items: flex-end;
+  gap: clamp(30px, 3vw, 56px);
+  margin-top: 0;
+  padding-top: clamp(30px, 5vh, 56px);
+}
+
+.cx-upnext {
+  flex: 1 1 auto;
+  gap: 12px;
+}
+
+.cx-upnext-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cx-upnext-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px 7px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--hair-soft);
+  transition: background 0.18s var(--cx-ease);
+}
+
+.cx-upnext-list li:last-child .cx-upnext-item {
+  border-bottom: 0;
+}
+
+.cx-upnext-item:hover .cx-upnext-title {
+  color: var(--t1);
+}
+
+.cx-upnext-item .cx-upnext-art {
+  width: 52px;
+  height: 52px;
+  opacity: 1;
+}
+
+.cx-upnext-item:hover .cx-upnext-art {
+  scale: 1;
+}
+
+.cx-upnext-item .cx-upnext-txt {
+  flex: 1;
+  width: auto;
+  margin-left: 0;
+  gap: 4px;
+}
+
+.cx-upnext-item .cx-upnext-title {
+  font-size: 14px;
+}
+
+.cx-upnext-item .cx-upnext-artist {
+  font-size: 12px;
+}
+
+.cx-upnext-dur {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--t6);
+}
+
+.cx-upnext-empty {
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--t7);
+}
+
+/* The edition under the name: small, mono, the same grey as the album. */
+.cx-title-tags {
+  display: block;
+  margin-top: 14px;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--t5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-title-tags + .cx-albumrow {
+  margin-top: 8px;
+}
+
+/* On a wide window the controls grow with it. */
+@media (min-width: 1500px) {
+  .cx-eyebrow {
+    font-size: 11px;
+  }
+
+  .cx-artist {
+    font-size: 23px;
+  }
+
+  .cx-album {
+    font-size: 14px;
+  }
+
+  .cx-upnext-item .cx-upnext-art {
+    width: 58px;
+    height: 58px;
+  }
+
+  .cx-upnext-item .cx-upnext-title {
+    font-size: 15px;
+  }
+
+}
+
+/* The side letters stand inside the figure, not on its edge. */
+.cx-root .spectrum-side {
+  left: 6px;
+  font-size: 9px;
+  color: rgb(255 255 255 / 42%);
+}
+
+/* --- the gallery: the house at rest --- */
+
+.cx-gallery {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(24px, 3vw, 56px);
+  flex: 1;
+  min-height: 0;
+  padding: 6vh clamp(40px, 5vw, 96px);
+  animation: cx-view-in 0.6s var(--cx-ease) both;
+}
+
+.cx-gal-room {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+  max-width: min(520px, calc(78vh - 120px));
+  min-width: 0;
+  text-align: left;
+}
+
+.cx-gal-cov {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background-color: rgb(255 255 255 / 3%);
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  color: var(--t7);
+  transition: opacity 0.8s var(--cx-ease);
+}
+
+.cx-gal-room[data-quiet] .cx-gal-cov {
+  opacity: 0.6;
+}
+
+.cx-gal-room:not([data-on]):not([data-quiet]) .cx-gal-cov {
+  opacity: 0.55;
+}
+
+.cx-gal-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--t5);
+}
+
+.cx-gal-title {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--t1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-gal-room[data-quiet] .cx-gal-title,
+.cx-gal-artist {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--t6);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-gal-prog {
+  display: block;
+  height: 1px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 8%);
+}
+
+.cx-gal-prog i {
+  display: block;
+  height: 100%;
+  background: var(--g);
+  transition: width 0.92s linear;
+}
+
+@media (min-width: 1280px) {
+  .cx-stage[data-spread] {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .cx-stage[data-spread] .cx-stage-inner {
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    padding-bottom: 0;
+  }
+
+  /* The left page: as tall as the room, as wide as it is tall. On a window taller than it is wide the
+     sleeve is capped by width and stands centred on the same ground as the page. */
+  .cx-stage[data-spread] .cx-stage-art {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 100%;
+  }
+
+  .cx-stage[data-spread] .cx-stage-art .cx-cover {
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cx-stage[data-spread] .cx-stage-art .cx-cover::after {
+    content: none;
+  }
+
+  .cx-stage[data-spread] .cx-bloom,
+  .cx-stage[data-spread] .cx-bloom-far {
+    display: none;
+  }
+
+  /* The right page: the record's colour as a field, strongest where it meets the sleeve. Nothing on it
+     may shrink: a title squeezed to one clipped line is worse than a page that scrolls. */
+  .cx-stage[data-spread] .cx-stage-meta {
+    display: flex;
+    flex: 1 1 auto;
+    align-self: stretch;
+    width: auto;
+    min-width: 0;
+    padding: clamp(30px, 4.6vh, 64px) clamp(36px, 4vw, 84px) clamp(22px, 3vh, 40px);
+    /* Never scrollable: this is a page, not a panel. What is on it is sized to fit it — the name into
+       its own box (`useFitText`), the rest by the short-window rules below. */
+    overflow: hidden;
+  }
+
+  .cx-stage[data-spread] .cx-stage-meta > * {
+    flex-shrink: 0;
+  }
+
+  /* Three groups on the page — who this is, the transport, the rest — and the room's height shared
+     between them, so nothing on it is a hole. */
+  .cx-stage[data-spread] .cx-stage-meta > .cx-bar-wrap,
+  .cx-stage[data-spread] .cx-stage-meta > .cx-live {
+    margin-top: auto;
+  }
+
+  .cx-stage[data-spread] .cx-stage-foot {
+    margin-top: auto;
+    padding-top: clamp(22px, 3.6vh, 44px);
+  }
+
+  /* The page's text keeps a reading measure on a very wide window. */
+  .cx-stage[data-spread] .cx-stage-meta > *:not(.cx-stage-foot) {
+    max-width: 880px;
+  }
+
+  .cx-stage[data-spread] .cx-title {
+    font-size: clamp(44px, min(8vh, 5.4vw), 112px);
+  }
+
+  /* Resting: the page goes dark and the type steps back; the sleeve stays the whole left page, which
+     is now the whole height, the bar having gone. */
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-inner {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    height: 100%;
+    animation: none;
+  }
+
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-art {
+    --cx-cover-size: auto;
+  }
+
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-meta {
+    align-items: flex-start;
+    width: auto;
+    text-align: left;
+    background: #0a0a0c;
+  }
+
+  /* The resting page's two readouts sit on the page, not on the picture. */
+  .cx-root[data-idle]:has(.cx-stage[data-spread]) .cx-idle-next {
+    left: auto;
+    max-width: 30vw;
+  }
+
+}
+
+/* A narrower page: the source leaves the eyebrow, the fader takes a line of its own under the shelf. */
+@media (min-width: 1280px) and (max-width: 1499px) {
+  .cx-stage[data-spread] .cx-eyebrow-src {
+    display: none;
+  }
+
+  .cx-stage[data-spread] .cx-stage-foot {
+    flex-wrap: wrap;
+  }
+
+}
+
+/* A short window: the type steps down, the shelf shows two, the rows sit closer. */
+@media (min-width: 1280px) and (max-height: 960px) {
+  .cx-stage[data-spread] .cx-title {
+    font-size: clamp(40px, min(6.6vh, 5vw), 84px);
+  }
+
+  .cx-stage[data-spread] .cx-artistrow {
+    margin-top: 10px;
+    margin-bottom: 8px;
+  }
+
+  .cx-stage[data-spread] .cx-upnext-list li:nth-child(n + 3) {
+    display: none;
+  }
+
+  .cx-stage[data-spread] .cx-upnext-item {
+    padding: 5px 8px 5px 0;
+  }
+
+  .cx-stage[data-spread] .cx-upnext-item .cx-upnext-art {
+    width: 44px;
+    height: 44px;
+  }
+
+}
+
+/* ==========================================================================================
+ * The spread, finished: the sleeve owns the left edge from the very top,
+ * the type has a light line and a heavy one, and a record you are looking at is a spread too.
+ * ========================================================================================== */
+
+@media (min-width: 1280px) {
+
+  .cx-stage[data-spread] .cx-stage-meta {
+    padding-top: clamp(22px, 3.6vh, 48px);
+  }
+
+  /* Light over heavy: the artist in the display face at 300, the title at 800 under it. */
+  .cx-stage[data-spread] .cx-artistrow {
+    gap: 18px;
+    margin-top: 22px;
+    margin-bottom: 4px;
+  }
+
+  .cx-stage[data-spread] .cx-artist {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2vw, 38px);
+    font-weight: 300;
+    letter-spacing: -0.015em;
+    color: var(--t2);
+  }
+
+  .cx-stage[data-spread] .cx-fav {
+    color: var(--t6);
+  }
+
+  /* Resting: the caption sinks to the foot of the page, the clock keeps the top; the field stays,
+     faintly, so the page is still the record's room and not a hole beside it. */
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-meta {
+    justify-content: flex-end;
+    padding-bottom: clamp(44px, 7vh, 96px);
+  }
+
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-title {
+    font-size: clamp(36px, 5.2vh, 64px);
+  }
+
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-artist {
+    font-size: clamp(20px, 2.6vh, 30px);
+  }
+
+  .cx-root[data-idle]:has(.cx-stage[data-spread]) .cx-idle-next {
+    top: clamp(112px, 15vh, 170px);
+    bottom: auto;
+    right: clamp(24px, 3vw, 52px);
+  }
+
+  /* --- a record you are looking at is a spread as well --- */
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) {
+    --page-pad: clamp(40px, 4vw, 84px);
+    display: grid;
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+    column-gap: 0;
+    padding: 0;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) > .cx-detail {
+    display: contents;
+  }
+
+  /* The left page: the sleeve, the height of the window, staying put while the tracks scroll. */
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-art {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    margin: 0;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-cover {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-bloom {
+    display: none;
+  }
+
+  /* The right page: the way back, then the record's head, then everything it lists. */
+  .cx-browse-inner[data-detail]:has(.cx-detail) > .cx-browse-back {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 22px var(--page-pad) 0;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-kind {
+    grid-column: 2;
+    grid-row: 2;
+    margin: clamp(34px, 5.6vh, 64px) var(--page-pad) 0;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-title {
+    grid-column: 2;
+    grid-row: 3;
+    max-width: 880px;
+    margin: 14px var(--page-pad) 0;
+    font-size: clamp(44px, min(7vh, 4.8vw), 96px);
+    letter-spacing: -0.045em;
+    line-height: 0.98;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-title[data-len='3'] {
+    font-size: clamp(36px, 5vh, 64px);
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-title[data-len='4'] {
+    font-size: clamp(30px, 4.2vh, 52px);
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-title[data-len='5'] {
+    font-size: clamp(26px, 3.6vh, 44px);
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-sub {
+    grid-column: 2;
+    grid-row: 4;
+    margin: 14px var(--page-pad) 0;
+    font-family: var(--font-display);
+    font-size: clamp(22px, 1.8vw, 34px);
+    font-weight: 300;
+    letter-spacing: -0.015em;
+    color: var(--t2);
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail > .cx-browse-actions {
+    grid-column: 2;
+    grid-row: 5;
+    margin: clamp(24px, 3.6vh, 40px) var(--page-pad) 0;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) > .cx-browse-body {
+    grid-column: 2;
+    grid-row: 6;
+    padding: clamp(30px, 4.6vh, 56px) var(--page-pad) 56px;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-about {
+    max-width: 760px;
+  }
+}
+
+/* ==========================================================================================
+ * The spread, corrected against the screen: the resting caption at the foot, the album's left page
+ * the height of the view it stands in, its ground continuous, its list one column until there is room.
+ * ========================================================================================== */
+
+@media (min-width: 1280px) {
+  .cx-stage[data-spread] .cx-stage-art,
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-art {
+    width: min(100vh, 62vw);
+  }
+
+  .cx-root[data-idle]:has(.cx-stage[data-spread]) .cx-idle-progress {
+    left: min(100vh, 62vw);
+  }
+
+  /* The hidden rows keep no auto margin at rest, so the caption can sink to the foot. */
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-meta > .cx-bar-wrap,
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-meta > .cx-live,
+  .cx-root[data-idle] .cx-stage[data-spread] .cx-stage-foot {
+    margin-top: 0;
+  }
+
+  /* The browse is the box the record's page is measured against: the sleeve is as tall as it. */
+  .cx-browse {
+    container-type: size;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail) {
+    grid-template-columns: min(100cqh, 50vw) minmax(0, 1fr);
+  }
+
+  /* One ground, not a band: the record's wash fades over the whole view instead of stopping at 430px. */
+  .cx-browse:has(.cx-browse-inner[data-detail] .cx-detail) > .cx-browse-bg,
+  .cx-browse:has(.cx-browse-inner[data-detail] .cx-detail) > .cx-browse-fade {
+    height: 100%;
+  }
+
+  .cx-browse:has(.cx-browse-inner[data-detail] .cx-detail) > .cx-browse-fade {
+    background: linear-gradient(180deg, rgb(10 10 12 / 20%), rgb(10 10 12 / 72%) 55%, var(--cx-bg));
+  }
+
+  /* The list: one column until the page is wide enough for two to read. */
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-trows {
+    max-width: 760px;
+    column-count: 1;
+  }
+}
+
+@media (min-width: 1800px) {
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-trows {
+    max-width: none;
+    column-count: 2;
+  }
+}
+
+/* The record's left page is a square, whatever the view's height: a sleeve is never cropped. */
+@media (min-width: 1280px) {
+  .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-art {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+}
+
+/* ==========================================================================================
+ * The record decides, the rest whispers, the name is set in a serif, and the house turns like pages.
+ * ========================================================================================== */
+
+/* --- the title face: the grotesk at 800, as it was — a serif was tried and the grotesk won on the screen --- */
+
+.cx-title {
+  line-height: 0.96;
+}
+
+.cx-gal-title {
+  font-size: clamp(20px, 1.6vw, 28px);
+}
+
+.cx-qnow-title {
+  font-size: 19px;
+}
+
+/* --- the whisper: six seconds still and the controls step back --- */
+
+@media (min-width: 1280px) {
+  .cx-root[data-still] .cx-stage .cx-eyebrow,
+  .cx-root[data-still] .cx-stage .cx-stage-foot,
+  .cx-root[data-still] .cx-stage .cx-fav {
+    opacity: 0.22;
+    transition: opacity 1.6s var(--cx-ease);
+  }
+
+  .cx-stage .cx-eyebrow,
+  .cx-stage .cx-stage-foot,
+  .cx-stage .cx-fav {
+    transition: opacity 0.4s var(--cx-ease);
+  }
+}
+
+/* --- the pages: the house turned (Shift and the arrows, or a room in the sidebar) --- */
+
+@keyframes cx-page-right {
+  from {
+    opacity: 0;
+    transform: translateX(6%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cx-page-left {
+  from {
+    opacity: 0;
+    transform: translateX(-6%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cx-root[data-turn='right'] .cx-stage {
+  animation: cx-page-right 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.cx-root[data-turn='left'] .cx-stage {
+  animation: cx-page-left 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ==========================================================================================
+ * From the record to where it came from: the words that name it are the doors.
+ * ========================================================================================== */
+
+/*
+ * A name that leads somewhere.
+ *
+ * Nothing is added to it: no underline, no chevron, no box. (`cx-origin`, not `cx-door`: the
+ * catalogue already has a door — the row you press to open a service — and it draws a hairline under
+ * itself, which is where the underline under a record's artist was coming from.)
+ * Every pressable word in this face — the
+ * four in the bar, `canvas`, `house`, the ways out of a sheet — says so by lifting to white under the
+ * hand, and a record's artist is one more word of the same kind. An underline was tried and it read
+ * as a hyperlink pasted onto a poster.
+ *
+ * The box is made to hug its text: a button's own padding is taller than its line, which pushed the
+ * album line down and gave the row a second, empty line of its own.
+ */
+.cx-root .cx-origin {
+  display: inline-block;
+  padding: 0;
+  line-height: inherit;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.18s var(--cx-ease);
+}
+
+.cx-root .cx-origin:hover,
+.cx-root .cx-origin:focus-visible {
+  color: var(--t1);
+}
+
+/* The album line keeps its own row, so the door is as wide as the word and not as the column. */
+.cx-albumrow {
+  display: flex;
+  min-width: 0;
+  margin-top: 14px;
+}
+
+.cx-albumrow .cx-album {
+  margin-top: 0;
+}
+
+/* A record's own page names its artist too: the same door, in the light line under the title. */
+.cx-root .cx-detail-sub.cx-origin {
+  align-self: flex-start;
+}
+
+/* An artist is a person, not a record: the left page carries the portrait as a circle on the ground
+   rather than a sleeve to the edges, and the page's own wash is what stands behind it. */
+@media (min-width: 1280px) {
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait]) .cx-detail-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait]) .cx-detail-cover {
+    position: relative;
+    inset: auto;
+    width: min(64%, 64cqh);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    box-shadow:
+      0 40px 90px -40px rgb(0 0 0 / 90%),
+      inset 0 0 0 1px rgb(255 255 255 / 10%);
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait]) .cx-detail-bloom {
+    display: block;
+    inset: auto;
+    width: min(64%, 64cqh);
+    aspect-ratio: 1;
+    filter: blur(70px) saturate(1.2);
+    opacity: 0.35;
+  }
+}
+
+/* The name, at one of three sizes by its length — see `Stage`. */
+
+.cx-titlebox .cx-title {
+  margin: 0;
+  /* Three lines at most: a runaway name ends in an ellipsis rather than pushing the page down. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* The two lines that come and go keep their room whether they speak or not — see `Stage`. */
+.cx-title-tags {
+  min-height: 1lh;
+}
+
+.cx-albumrow {
+  min-height: 1lh;
+  font-size: 13px;
+}
+
+@media (min-width: 1500px) {
+  .cx-albumrow {
+    font-size: 14px;
+  }
+}
+
+/* ==========================================================================================
+ * The right page fits, always.
+ *
+ * The page does not scroll — it is a page, not a panel — so everything on it has to be true at any
+ * window height, and the one thing that may not move is the name: it sits in a box whose height
+ * depends on the window and never on the record (see `useFitText`). On a short window the page was
+ * running past its own foot and the house was cut in half, which is the same fault as scrolling,
+ * only quieter.
+ *
+ * So the page gives room up in a fixed order, cheapest first: the shelf drops to one record, then to
+ * none; only then does the name's box give way, and because the type is measured into it the name
+ * simply gets smaller rather than clipped. The transport, the timeline and the house never give.
+ * ========================================================================================== */
+
+/*
+ * The shelf by the height it has, a record at a time. Three ahead needs a tall screen; a laptop lid
+ * gets two; a short one gets one; a very short one keeps only the count on the label, which is the
+ * thing you actually read at a glance. Each step hands the name's box about seventy pixels back.
+ */
+
+/*
+ * The foot by the page's own width, not the window's.
+ *
+ * The right page is as wide as whatever the sleeve leaves it, which is 40% of a tall window and much
+ * more of a short one — so a window-width rule guesses. At 1512×982 it guessed wrong and the shelf's
+ * names came out as `E…` and `T…` beside the fader. The page measures itself instead.
+ */
+@media (min-width: 1280px) {
+  .cx-stage[data-spread] .cx-stage-meta {
+    container-type: inline-size;
+    container-name: page;
+  }
+}
+
+@container page (max-width: 660px) {
+  .cx-stage-foot {
+    flex-wrap: wrap;
+  }
+
+  /* The source moves off the eyebrow; it is already on the page, under the name. */
+  .cx-eyebrow-src {
+    display: none;
+  }
+
+  /* A narrow page is a page with a big sleeve on a tall window: vertical room is the scarce thing
+     there too, so the shelf keeps one record and the name keeps the height. */
+  .cx-upnext-list li:nth-child(n + 2) {
+    display: none;
+  }
+}
+
+/* ==========================================================================================
+ * A record changes the way one dissolves into another.
+ *
+ * It used to be a cut wearing a fade's clothes. The words were keyed on the track, so React threw
+ * the old ones away the instant the new ones existed, and what you actually saw was a hole and then
+ * new type rising into it. A fade-in is not a fade: a dissolve needs both halves on screen at once,
+ * the old one going as the new one comes, which is the only way a change of subject reads as one
+ * movement instead of two events.
+ *
+ * So every line that carries the record keeps the line it replaces for one beat (`useLeaving`), as a
+ * plain unpressable copy of itself laid over the same spot. The copy lifts and blurs away; the new
+ * one rises and sharpens into its place.
+ *
+ * They are not mirror images, and the reason is that type is not film. Two photographs at half
+ * strength are a dissolve; two lines of 200px type at half strength, one exactly on top of the
+ * other, are a smear — measured at the midpoint of the first attempt and it was unreadable for a
+ * sixth of a second. So this is a *handover* rather than an overlap: the old line is almost gone
+ * before the new one starts, and what carries the eye across the gap is the drift, not the ink. Each
+ * leaves in 0.28s and the next begins at 0.15s, so they are both faint at the only instant they are
+ * both there.
+ *
+ * The whole change is composed in three speeds, fastest nearest the reader: the words in about
+ * two thirds of a second, the sleeve in nine tenths, the light in the room in one and nine tenths.
+ * The room settles into the record *after* it has arrived, which is what a room does.
+ * ========================================================================================== */
+
+@keyframes cx-word-in {
+  from {
+    opacity: 0;
+    translate: 0 13px;
+    filter: blur(10px);
+  }
+
+  to {
+    opacity: 1;
+    translate: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes cx-word-out {
+  from {
+    opacity: 1;
+    translate: none;
+    filter: blur(0);
+  }
+
+  to {
+    opacity: 0;
+    translate: 0 -10px;
+    filter: blur(8px);
+  }
+}
+
+/*
+ * `backwards`, not `both`: the fill holds the first frame through the stagger and then lets go
+ * entirely, so no blur filter is left standing on a 200px headline for the rest of its life. A
+ * lingering filter costs the type its subpixel rendering, which is a permanent price for a
+ * half-second effect.
+ */
+.cx-in {
+  animation: cx-word-in 0.52s 150ms var(--cx-ease) backwards;
+}
+
+.cx-in-2 {
+  animation-delay: 205ms;
+}
+
+.cx-in-3 {
+  animation-delay: 255ms;
+}
+
+/*
+ * The copy that is leaving. Absolutely positioned with no offsets at all, so it takes the static
+ * position it would have had as a child — which inside a flex row is the place the live line sits,
+ * alignment included — and takes no room while it goes.
+ */
+.cx-out {
+  position: absolute;
+  max-width: 100%;
+  pointer-events: none;
+  animation: cx-word-out 0.28s cubic-bezier(0.2, 0.82, 0.3, 1) forwards;
+}
+
+/* The rows are the stage each dissolve plays on. */
+.cx-artistrow,
+.cx-titlebox,
+.cx-title-tags,
+.cx-albumrow {
+  position: relative;
+}
+
+/* The edition line holds its own text now, so the truncation belongs to the text and not the row. */
+.cx-title-tags .cx-line {
+  display: block;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The halo pair is wider than the sleeve that throws it and reaches past the frame, so its slots
+ * must not clip; and they sit behind the sleeve, which the stacking context an animating opacity
+ * creates would otherwise argue with.
+ */
+.cx-stage-art > .cx-xfade {
+  z-index: 0;
+  contain: none;
+}
+
+/*
+ * The dissolve of two stacked pictures, without the dip in the middle.
+ *
+ * Both slots on a linear ramp means both sit at half strength halfway through, and half over half
+ * is three quarters — a quarter of the surface underneath shows through at the midpoint, and the
+ * record goes momentarily pale. The incoming picture rises early and the outgoing holds and then
+ * drops, so between them the surface stays covered from the first frame to the last.
+ */
+.cx-xfade {
+  transition-timing-function: cubic-bezier(0.72, 0, 0.88, 0.42);
+}
+
+.cx-xfade[data-front] {
+  transition-timing-function: cubic-bezier(0.22, 0.62, 0.3, 1);
+}
+
+/*
+ * Asked for less movement: the handover stays, because a line replacing itself with no transition at
+ * all is the cut this was written to remove. What goes is the travel and the blur — the two things
+ * that are motion rather than change.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cx-in,
+  .cx-out {
+    animation-duration: 0.2s;
+    animation-delay: 0s;
+  }
+
+  .cx-in {
+    animation-name: cx-word-in-plain;
+  }
+
+  .cx-out {
+    animation-name: cx-word-out-plain;
+  }
+}
+
+@keyframes cx-word-in-plain {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cx-word-out-plain {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================================
+ * A person gets the page, not a hole with a circle in it.
+ *
+ * The artist page was an album page wearing a round picture: a portrait floating at 64% of a left
+ * page that was otherwise seven hundred pixels of black, beside a run line that said `8 tracks · 30
+ * min` — a fact about a record and nothing at all about a person.
+ *
+ * A sleeve is never cropped, and that is why a record's left page is a square with the ground above
+ * and below it. A photograph is not a sleeve. It was composed by someone, it has no edges that mean
+ * anything, and it is the only picture of this person the page has — so it takes the whole left page,
+ * the way the sleeve takes the whole left page of the stage. The crop sits above the middle, because
+ * that is where faces are.
+ *
+ * The circle stays everywhere it was earning its keep — a tile, a phone, a band across a narrow view.
+ * Round for a person is a rule about how you tell a person from a record at a glance, and at the size
+ * of a whole page there is nothing left to tell apart. It also stays here when the page has no
+ * photograph to show: `data-photo` says the picture came from the artist rather than from whatever
+ * the provider handed back, and only that picture is ever cropped.
+ * ========================================================================================== */
+
+@media (min-width: 1280px) {
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-art {
+    display: block;
+    height: calc(100vh - 54px);
+    aspect-ratio: auto;
+  }
+
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-cover {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    aspect-ratio: auto;
+    border-radius: 0;
+    /* Heads are above the centre of almost every photograph ever taken of a musician. */
+    background-position: center 30%;
+    box-shadow: none;
+  }
+
+  /* The light behind the picture was the answer to a picture that did not fill anything. */
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-bloom {
+    display: none;
+  }
+
+  /*
+   * The seam. The photograph runs to the fold and the right page darkens into it — the same shadow
+   * the stage lays where its sleeve meets the colour field, so the two spreads are one idea.
+   */
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, transparent 76%, rgb(10 10 12 / 55%)),
+      linear-gradient(180deg, rgb(10 10 12 / 45%), transparent 26%, transparent 74%, rgb(10 10 12 / 55%));
+  }
+}
+
+@media (min-width: 1500px) {
+  .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-art {
+    height: 100cqh;
+  }
+}
+
+/* The artist's two blocks: the same head every shelf has, over a grid or a list rather than a row. */
+.cx-artist-sec {
+  margin-top: clamp(26px, 3.4vh, 40px);
+}
+
+.cx-artist-sec .cx-sec-head {
+  margin-bottom: 16px;
+}
+
+/* The rest of the ranked songs, offered rather than dumped — see `Artist`. */
+.cx-root .cx-sec-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 0;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: lowercase;
+  color: var(--t5);
+  cursor: pointer;
+  transition: color 0.18s var(--cx-ease);
+}
+
+.cx-root .cx-sec-more:hover,
+.cx-root .cx-sec-more:focus-visible {
+  color: var(--t1);
+}
+
+/* ==========================================================================================
+ * A wall of people is an index, not a contact sheet.
+ *
+ * Three hundred and sixty-two artists were one flat grid of identical circles in alphabetical order
+ * — with the order nowhere on the page. A record shop prints divider cards, and they are the only
+ * reason anyone finds anything in a rack of a thousand sleeves. So the letters are drawn, and a rail
+ * of the letters that exist stands beside the page so any of them is one press away.
+ * ========================================================================================== */
+
+.cx-index {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: clamp(14px, 2vw, 30px);
+  align-items: start;
+}
+
+.cx-index-body {
+  min-width: 0;
+}
+
+.cx-index-sec + .cx-index-sec {
+  margin-top: clamp(34px, 4.4vh, 58px);
+}
+
+/*
+ * The divider card: the letter, the rule it hangs on, and how many are filed under it.
+ *
+ * It was sticky for a while, and the price was a painted band so the portraits could scroll under
+ * the letter — a flat rectangle laid over a page whose ground is not flat, which read as a box on a
+ * screen whose whole argument is that nothing is boxed. The rail beside the page is the thing that
+ * answers *where am I*; the divider only has to say what comes next.
+ */
+.cx-index-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.cx-index-letter {
+  flex: none;
+  font-size: clamp(26px, 2.6vw, 42px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--t2);
+}
+
+.cx-index-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--hair-soft);
+}
+
+.cx-index-count {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--t6);
+}
+
+/*
+ * The rail. Twenty-six words of nine-pixel type are not a menu, they are a ruler — it reads as one
+ * object and only resolves into letters when you go to use it.
+ */
+.cx-index-rail {
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+}
+
+.cx-index-ruler {
+  position: sticky;
+  top: 34vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  height: max-content;
+  padding: 10px 3px;
+}
+
+.cx-root .cx-index-ruler button {
+  width: 26px;
+  padding: 2px 0;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: var(--t6);
+  text-align: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition:
+    color 0.16s var(--cx-ease),
+    background 0.16s var(--cx-ease);
+}
+
+.cx-root .cx-index-ruler button:hover,
+.cx-root .cx-index-ruler button:focus-visible {
+  color: var(--cx-bg);
+  background: var(--t1);
+}
+
+/* A person with no photograph: their initials, in the circle, in the face the titles are set in. */
+.cx-tile-initials {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: clamp(20px, 2.4vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--t5);
+  user-select: none;
+}
+
+/*
+ * How much there is of it, beside the heading — a fact about the collection, set as one.
+ *
+ * `margin-right: auto` keeps it next to the name: the row spreads its children apart so the search
+ * field can hold the far end, and without this the count drifted into the middle of the page and
+ * read as a stray number rather than as part of the title.
+ */
+.cx-browse-count {
+  flex: none;
+  align-self: flex-end;
+  margin-right: auto;
+  margin-bottom: 0.5em;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+}
+
+/*
+ * The hall stands in the middle of what is left, not at the top of it.
+ *
+ * The doors got shorter when the racks inside them were made to fill — and a row of doors pinned
+ * under the band left a hundred and sixty pixels of nothing between them and the foot of the page,
+ * which reads as a second row that failed to load. Centred, the same space becomes air above and
+ * below, which is what air is for.
+ */
+@media (min-width: 980px) {
+  .cx-browse-inner[data-root] {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .cx-browse-inner[data-root] > .cx-browse-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+}
+
+/* ==========================================================================================
+ * Inputs, again: an icon per jack, the room it would play in, and what arrives by itself.
+ * ========================================================================================== */
+
+.cx-input-ic {
+  width: 28px;
+}
+
+.cx-input[data-on] .cx-input-ic {
+  color: var(--gb);
+}
+
+.cx-input-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 18px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  color: var(--t7);
+  transition: color 0.18s;
+}
+
+.cx-input:hover .cx-input-go {
+  color: var(--t2);
+}
+
+.cx-input[data-receiver] {
+  cursor: default;
+}
+
+.cx-input[data-receiver]:hover {
+  padding-left: 0;
+}
+
+.cx-input-via {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--t5);
+}
+
+.cx-receivers {
+  max-width: 720px;
+  margin-top: 44px;
+}
+
+.cx-inputs-note {
+  margin: 18px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t6);
+}
+
+/* --- what a search cannot say for itself --- */
+
+.cx-search-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hair-soft);
+}
+
+.cx-search-note {
+  margin: 0;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--t6);
+}
+
+.cx-search-note-go {
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-search-note-go:hover {
+  color: var(--t1);
+}
+

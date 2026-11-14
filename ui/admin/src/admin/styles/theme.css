@@ -1,0 +1,1083 @@
+@font-face {
+  font-family: 'AuroraWebshop';
+  src: url('../assets/fonts/AuroraWebshop.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * The product's two brand faces, shared with both players.
+ *
+ * Hanken Grotesk for display, JetBrains Mono for every label and measurement — the same pair, from
+ * the same self-hosted variable files, as `player/src/styles.css` and the art player. Typography is
+ * the strongest signal that the admin UI and the players are one system: a console in the system sans
+ * beside a player in Hanken reads as two products that happen to share a server.
+ *
+ * One `@font-face` per family because both files are the variable font (100–900 in one binary), and
+ * self-hosted because an audioserver on a LAN with no route out must not fall back to Arial for its
+ * own wordmark.
+ */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  src: url('../assets/fonts/hanken-grotesk-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/jetbrains-mono-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.icon-ws-miniserver::before,
+.icon-ws-extensions-v2::before,
+.icon-ws-audio-standing::before,
+.icon-ws-touch::before,
+.icon-ws-marketing::before {
+  font-family: 'AuroraWebshop';
+  font-weight: normal;
+  font-style: normal;
+  speak: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-ws-miniserver::before { content: "\\f109"; }
+.icon-ws-extensions-v2::before { content: "\\f10e"; }
+.icon-ws-audio-standing::before { content: "\\f111"; }
+.icon-ws-touch::before { content: "\\f102"; }
+.icon-ws-marketing::before { content: "\\f10a"; }
+
+/*
+ * The product is three surfaces, and moving between them is a navigation.
+ *
+ * The two players are one bundle and switch inside it; this console is a different app at a different url,
+ * so going there is a real page load and no DOM animation can cross it. `@view-transition` can:
+ * same-origin cross-document transitions let the browser snapshot the outgoing page, load the incoming one
+ * and animate between them — and a shared `view-transition-name` makes an element *fly* between its old and
+ * new positions across two different documents.
+ *
+ * `audioserver-mark` is on this hero's mark and on the player's, so pressing the wordmark in either place sends
+ * the mark travelling to where the other one keeps it. Browsers without support get an ordinary
+ * navigation, which is what they had before.
+ */
+@view-transition {
+  navigation: auto;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif;
+  /* The brand faces, with the previous stacks kept as fallbacks so a failed font load degrades to
+     what this UI looked like yesterday rather than to Times. */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-display: 'Hanken Grotesk', var(--font-sans);
+
+  /*
+   * The palette. Every colour in the console comes from here: component CSS refers to these by
+   * name and never spells out a hex or an rgba of its own (`npm run audit:ui:strict` enforces it).
+   * A tint is `color-mix(in srgb, var(--accent) 30%, transparent)` — the token at an alpha — so the
+   * light theme only has to redefine this block.
+   */
+  --bg: #0A0C10;
+  --bg-card: #15181D;
+  --bg-console: #0C0E13;         /* logs console */
+  --bg-input: #0A0C0F;
+  --surface: rgba(255, 255, 255, 0.04);   /* default control fill */
+  --surface-soft: rgba(255, 255, 255, 0.03); /* subtler fill / hover base */
+  --surface-1: #1C1F25;          /* solid raised fill */
+  --surface-2: #232730;
+  /* What a tint is made of: `--ink` lightens a dark surface (and darkens a light one — it flips
+     with the theme), `--shade` is for shadows and scrims, `--white` stays white on any theme
+     (toggle knobs, text on a solid colour). */
+  --ink: #FFFFFF;
+  --shade: #000000;
+  --white: #FFFFFF;
+  --text: #EDEEF0;
+  --text-subtle: #CBD1D9;
+  --text-muted: #9CA3AF;
+  --text-dim: #6B7280;
+  --text-faint: #4B5563;
+  --accent: #F0C14B;
+  --accent-bright: #F7D578;
+  --accent-deep: #B8860B;
+  --accent-on: #1C1404;
+  --accent-soft: rgba(240, 193, 75, 0.08); /* tinted accent surface */
+  --accent-glow: rgba(240, 193, 75, 0.70); /* dot/ring glows */
+  --warn: #F59E0B;
+  --warn-bright: #FBBF24;
+  --warn-deep: #B45309;
+  --warn-on: #2A1604;
+  --danger: #EF4444;
+  --danger-bright: #FCA5A5;
+  --danger-deep: #DC2626;
+  --info: #60A5FA;
+  --info-bright: #93C5FD;
+  /* The hairline, at the weight both players draw theirs (`--line` / `--hair`): 7%, not 6%. One
+     alpha for every divider in the product. */
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-soft: rgba(255, 255, 255, 0.04);
+  --border-whisper: rgba(255, 255, 255, 0.03);
+  --border-faint: rgba(255, 255, 255, 0.05);
+  --border-input: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(240, 193, 75, 0.30);
+  --border-accent-strong: rgba(240, 193, 75, 0.55);
+  --radial: rgba(240, 193, 75, 0.05); /* ambient top glow */
+  --modal-backdrop: rgba(10, 12, 16, 0.65); /* dialog overlay */
+  --shadow-soft: 0 1px 0 rgba(246, 246, 246, 0.05), 0 16px 44px -36px rgba(0, 0, 0, 0.68);
+  --shadow-float: 0 26px 56px -44px rgba(0, 0, 0, 0.78); /* menus, popovers */
+  --card-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --panel-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --ring: 0 0 0 3px rgba(240, 193, 75, 0.18);
+  --ring-outline: 2px solid rgba(240, 193, 75, 0.5);
+  /* The pointer's own light on card surfaces — see the spotlight block below. */
+  --spotlight: rgba(255, 255, 255, 0.05);
+  --spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /*
+   * The type scale. Seven sizes and one display size; nothing in the console sets a font size
+   * that is not one of these.
+   *
+   * There used to be 65 distinct sizes, and the most common one was 10px — 8px and 9px were not
+   * far behind. `--fs-2xs` is the floor now and is meant for one thing: short uppercase labels
+   * and badges, where capitals at 11px still read. Running text starts at `--fs-xs`.
+   */
+  --fs-2xs: 0.6875rem;  /* 11px — uppercase labels, badges */
+  --fs-xs: 0.75rem;     /* 12px — captions, meta */
+  --fs-sm: 0.8125rem;   /* 13px — secondary text, controls */
+  --fs-md: 0.875rem;    /* 14px — body */
+  --fs-lg: 1rem;        /* 16px — emphasised body, small headings */
+  --fs-xl: 1.25rem;     /* 20px — section headings */
+  --fs-2xl: 1.5rem;     /* 24px — page titles */
+  --fs-display: 1.875rem; /* 30px — hero wordmark, sign-in title */
+
+  /* The corner scale: four radii and the pill. A circle is `50%`, a square corner is `0`. */
+  --radius-xs: 4px;   /* bars, checkboxes, tiny chips */
+  --radius-sm: 8px;   /* controls, buttons, inputs */
+  --radius-md: 12px;  /* cards, panels */
+  --radius-lg: 16px;  /* modals, hero surfaces */
+  --radius-pill: 999px;
+
+  /*
+   * Breakpoints cannot be custom properties (a media query cannot read one), so they are a
+   * convention instead, checked by the audit: 640px (phone), 900px (tablet), 1200px (narrow
+   * desktop). Write `max-width` queries against exactly those three.
+   */
+
+  /* How wide the workspace may grow — one token, where six hardcoded caps used
+     to be scattered across the shell and every view.
+     Full width was tried and rejected: only the log console genuinely gained,
+     while the fixed-size zone tiles left a large empty field beside them on a
+     wide monitor, which reads emptier than a centred column. Set to `none` to
+     go edge-to-edge again. */
+  --workspace-max: 1360px;
+  /** Outer frame, a touch wider than the content it holds. */
+  --shell-max: 1440px;
+  --workspace-gutter: clamp(1rem, 0.6rem + 1.4vw, 2.5rem);
+  /* Reading width for running text. Panels, tables and tile grids use the full
+     workspace, but a sentence stretched across an ultrawide monitor is hard to
+     read — the eye loses the start of the next line. Roughly 75 characters. */
+  --prose-max: 68ch;
+  --page-width: min(1400px, 94vw);
+  --page-padding: clamp(1.1rem, 0.9rem + 0.8vw, 1.8rem);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-9: 2.5rem;
+  --space-10: 3rem;
+  --card-pad: var(--space-6);
+  --card-pad-sm: var(--space-4);
+  --card-gap: var(--space-4);
+  --card-gap-sm: var(--space-3);
+  --control-height: 44px;
+  --control-height-compact: 30px;
+  --btn-pad-y: 0.7rem;
+  --btn-pad-x: 1.4rem;
+  --z-header: 40;
+  --z-alert: 7000;
+  --z-version: 50;
+  --z-modal: 5000;
+  --z-sticky: 6500;
+  --z-confirm: 6500;
+}
+
+/* ============================================================
+   Light theme — toggled via <body data-theme="light"> from the
+   Account menu. Token-driven so component CSS that consumes the
+   redesign tokens flips automatically. The legacy --color-*
+   aliases are mirrored below so older panels go light too.
+   ============================================================ */
+body[data-theme='light'] {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #EAECEF;            /* greyer page so white panels pop */
+  --bg-card: #FFFFFF;
+  --bg-console: #F1F3F5;
+  --bg-input: #FFFFFF;
+  --surface: rgba(17, 24, 39, 0.04);
+  --surface-soft: rgba(17, 24, 39, 0.03);
+  --surface-1: #F8F9FB;
+  --surface-2: #EEF0F4;
+
+  /* tints — ink is dark here, so every `color-mix(… var(--ink) …)` darkens instead of lightens */
+  --ink: #111827;
+  --shade: #111827;
+
+  /* borders — heavier so edges read on white */
+  --border: rgba(17, 24, 39, 0.12);
+  --border-strong: rgba(17, 24, 39, 0.22);
+  --border-soft: rgba(17, 24, 39, 0.06);
+  --border-whisper: rgba(17, 24, 39, 0.04);
+  --border-faint: rgba(17, 24, 39, 0.06);
+  --border-input: rgba(17, 24, 39, 0.18);
+  --border-accent: rgba(184, 134, 11, 0.40);
+  --border-accent-strong: rgba(184, 134, 11, 0.55);
+
+  /* text */
+  --text: #15181D;
+  --text-subtle: #2D333D;
+  --text-muted: #525B66;
+  --text-dim: #7A828E;
+  --text-faint: #A6AEB8;
+
+  /* brand accent — deeper gold for contrast on white */
+  --accent: #B8860B;
+  --accent-bright: #8C6808;
+  --accent-deep: #6E5206;
+  --accent-on: #FFFFFF;
+  --accent-soft: rgba(184, 134, 11, 0.10);
+  --accent-glow: rgba(184, 134, 11, 0.45);
+
+  /* status — darker so labels stay legible on light */
+  --warn: #D97706;
+  --warn-bright: #B45309;
+  --warn-deep: #92400E;
+  --warn-on: #FFFFFF;
+  --danger: #DC2626;
+  --danger-bright: #B91C1C;
+  --danger-deep: #B91C1C;
+  --info: #2563EB;
+  --info-bright: #1D4ED8;
+
+  /* effects */
+  --radial: rgba(184, 134, 11, 0.06);
+  --modal-backdrop: rgba(17, 24, 39, 0.45);
+  --spotlight: rgba(17, 24, 39, 0.045);
+  --shadow-soft: 0 1px 0 rgba(17, 24, 39, 0.04), 0 16px 44px -36px rgba(17, 24, 39, 0.28);
+  --shadow-float: 0 26px 56px -44px rgba(17, 24, 39, 0.4);
+  --card-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --panel-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --ring: 0 0 0 3px rgba(184, 134, 11, 0.2);
+  --ring-outline: 2px solid rgba(184, 134, 11, 0.55);
+}
+
+/* Smooth theme transition on the document chrome. */
+html,
+body {
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+body::before {
+  transition: background 0.35s ease;
+}
+
+body[data-theme='light']::before {
+  background: radial-gradient(ellipse 70% 40% at 50% 0%, var(--radial) 0%, transparent 55%) !important;
+}
+
+/* ============================================================
+   Eyebrow brand-mark (10-bar SVG) — the data-URI has the fill
+   baked in so it can't read --accent. Re-declared per theme to
+   match the contrast curve (mint #F0C14B on dark, deep #B8860B
+   on light).
+   ============================================================ */
+.zones-eyebrow::before,
+.logs-eyebrow::before,
+.zones-modal__eyebrow::before,
+.linein-modal__eyebrow::before,
+.bridge-modal__eyebrow::before {
+  /* default (dark) already set in each component CSS;
+     light override below swaps the fill. */
+}
+
+/* The chevron's colour is baked into its data URI, so it cannot follow the text
+   the way a glyph would — the light theme needs its own, dark on white. */
+body[data-theme='light'] select {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23374151' stroke-width='1.6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, var(--bg-card) 0%, var(--surface-1) 100%);
+}
+
+body[data-theme='light'] .zones-eyebrow::before,
+body[data-theme='light'] .logs-eyebrow::before,
+body[data-theme='light'] .zones-modal__eyebrow::before,
+body[data-theme='light'] .signin-eyebrow::before,
+body[data-theme='light'] .pairing-eyebrow::before,
+body[data-theme='light'] .content-eyebrow::before,
+body[data-theme='light'] .setup-eyebrow::before,
+body[data-theme='light'] .setup-section__eyebrow::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 88 32'><g fill='%23B8860B'><rect x='2' y='12' width='3' height='8' rx='1' opacity='0.4'/><rect x='10' y='7' width='3' height='18' rx='1' opacity='0.6'/><rect x='18' y='10' width='3' height='12' rx='1' opacity='0.8'/><rect x='26' y='5' width='3' height='22' rx='1'/><rect x='38' y='3' width='4' height='26' rx='1'/><rect x='50' y='5' width='3' height='22' rx='1'/><rect x='58' y='9' width='3' height='14' rx='1' opacity='0.9'/><rect x='66' y='6' width='3' height='20' rx='1' opacity='0.8'/><rect x='74' y='11' width='3' height='10' rx='1' opacity='0.7'/><rect x='82' y='13' width='3' height='6' rx='1' opacity='0.6'/></g></svg>");
+}
+
+/* Linein + bridge modal eyebrows use a single dot ::before, not the bars
+   SVG — already token-driven (var(--accent)) so they switch on their own. */
+
+/* ============================================================
+   Panels on light
+   ------------------------------------------------------------
+   Dark uses faint light-on-dark tints to separate cards from
+   the page; on white that goes flat. In light we force the main
+   card classes to a real white surface + visible border + soft
+   shadow so they actually read as panels. Nested sub-panels
+   (call-outs, drill rows, kv strips) flip to a light grey fill
+   so they sit visibly inside the white card.
+   ============================================================ */
+
+/* Outer panels (white card on grey page) — uses a crispier 16% edge,
+   stronger than the page divider-border (12%) so the card outline
+   reads on light. */
+body[data-theme='light'] .source-card,
+body[data-theme='light'] .share-card,
+body[data-theme='light'] .zones-card,
+body[data-theme='light'] .zones-device,
+body[data-theme='light'] .linein-modal,
+body[data-theme='light'] .bridge-modal,
+body[data-theme='light'] .zones-modal,
+body[data-theme='light'] .content-modal,
+body[data-theme='light'] .logs-console,
+body[data-theme='light'] .setup-section,
+body[data-theme='light'] .signin-card,
+body[data-theme='light'] .inline-form,
+body[data-theme='light'] .confirm-dialog__panel {
+  background: var(--bg-card);
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05), 0 8px 24px rgba(17, 24, 39, 0.05);
+}
+
+/* Sub-panels: nested containers inside a panel that need a distinct
+   solid-grey fill on light (the dark-mode --surface/--surface-soft tints
+   are too subtle on white). Only target genuine "sub-card" containers —
+   pills/chips/buttons keep their own --surface fill so they don't get
+   too prominent. */
+body[data-theme='light'] .bridge-modal__provider-detail,
+body[data-theme='light'] .bridge-modal__callout,
+body[data-theme='light'] .bridge-modal__wv,
+body[data-theme='light'] .bridge-modal__mode-card,
+body[data-theme='light'] .bridge-modal__wv-file,
+body[data-theme='light'] .bridge-modal__wv-details,
+body[data-theme='light'] .linein-modal__meta-grid,
+body[data-theme='light'] .zones-hub__drill,
+body[data-theme='light'] .zones-hub__input-rows,
+body[data-theme='light'] .zones-card__output,
+body[data-theme='light'] .content-empty-info,
+body[data-theme='light'] .scan-prompt,
+body[data-theme='light'] .stat-strip,
+body[data-theme='light'] .album-strip,
+body[data-theme='light'] .library-summary,
+body[data-theme='light'] .spotify-configured-strip,
+body[data-theme='light'] .content-spec-row,
+body[data-theme='light'] .setup-facts,
+body[data-theme='light'] .setup-link,
+body[data-theme='light'] .setup-note,
+body[data-theme='light'] .logs-statusbar {
+  background: #F3F5F7;
+  border-color: rgba(17, 24, 39, 0.14);
+}
+
+/* Segmented controls + status/diag capsules: in dark they ride a faint
+   tint that vanishes on light — give them an explicit white container
+   + crisp 16% edge so the capsule pops on the grey page with its green
+   pill (or status items). */
+body[data-theme='light'] .subtabs,
+body[data-theme='light'] .user-menu__theme,
+body[data-theme='light'] .diag-strip {
+  background: var(--bg-card);
+  border: 1px solid rgba(17, 24, 39, 0.16);
+}
+
+/* ============================================================
+   Heading guard
+   ------------------------------------------------------------
+   Page/hero titles that used a dark-only gradient text-fill
+   (background-clip:text + -webkit-text-fill-color:transparent)
+   ghost out on light. The deeper fix is to drop that pattern
+   from the component CSS (preferred — already done for the
+   redesigned views below). This guard is a safety net that
+   forces any titel-class that *still* ships a gradient fill
+   to follow --text. Add new title classes to this list when
+   they appear in a refresh.
+   ============================================================ */
+.zones-title,
+.logs-title,
+.content-title,
+.setup-title,
+.signin-title,
+.pairing-title,
+.modal-title {
+  color: var(--text);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Thin, quiet scrollbars — the technical player's, verbatim.
+ *
+ * This surface used the platform's default: a 15px light-grey slab down the side of a near-black page,
+ * which is the widest and brightest thing on the screen and belongs to no design at all. The player
+ * already solved it; there is no reason for the console to look different while scrolling.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+/* The thumb answers the hand: neutral at rest, the house green under the pointer —
+   the same gesture the product site's scrollbar makes. */
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  background-clip: content-box;
+}
+
+body[data-theme='light'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(184, 134, 11, 0.45);
+  background-clip: content-box;
+}
+
+html {
+  /* Always reserve gutter for the scrollbar so the viewport width is stable
+     when content grows tall enough to need scrolling (e.g. LogsView mount).
+     Without this, the magnetic tab indicator would re-anchor mid-transition
+     because the centered .ws-tabs reflows when the scrollbar appears. */
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-lg);
+  letter-spacing: 0.005em;
+  position: relative;
+  overflow-x: hidden;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+body h1,
+body h2,
+body h3,
+body h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Selection is brand, not chrome — the product site's green, at reading strength. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+body[data-theme='light'] ::selection {
+  background: rgba(184, 134, 11, 0.22);
+}
+
+a {
+  color: inherit;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/*
+ * An eyebrow is a *label*, and in this product a label is mono, uppercase and widely tracked — that
+ * is how `.zones-eyebrow`, `.logs-eyebrow` and every label in both players are set. This one was
+ * sans at 0.06em, which is neither tracked enough to read as engraved nor plain enough to read as
+ * a sentence.
+ */
+.page-hero__eyebrow {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: var(--fs-2xs);
+  color: var(--text-dim);
+}
+
+.page-hero__title {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.06;
+}
+
+.page-hero__subtitle {
+  margin: 0.35rem 0 0;
+  color: var(--text-subtle);
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 20% 100%, color-mix(in srgb, var(--accent) 4%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 80% 100%, color-mix(in srgb, var(--accent) 3%, transparent) 0%, transparent 50%);
+  z-index: 0;
+  transition: background 1s ease;
+  animation: ambient-fade-in 1.8s ease backwards;
+  animation-delay: 0.3s;
+}
+
+@keyframes ambient-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none !important;
+  }
+}
+
+/* ============ NO-INTRO MODE ============
+   When the app restores directly into workspace (e.g. F5 on /admin), skip the
+   one-shot entry animations so the user lands instantly at the final state.
+   PERSISTENT — we never remove the class, because removing it would re-trigger
+   the animation declarations and they would fire late. The targeted list only
+   touches intro animations; modals/toasts/menus keep their normal transitions. */
+body.no-intro .hero-mark,
+body.no-intro .hero-mark svg g rect,
+body.no-intro .hero-mark::before,
+body.no-intro .hero-mark::after,
+body.no-intro .hero-wordmark,
+body.no-intro .hero-tagline,
+body.no-intro .diag-strip,
+body.no-intro .top-strip,
+body.no-intro .shell-foot,
+body.no-intro #app,
+body.no-intro .ws-tabs {
+  animation: none !important;
+}
+
+/* Skip the sign-in→workspace shrink/fade transitions on restore — they only
+   make sense as an actual mode transition, not on direct-into-workspace load. */
+body.no-intro .hero-mark,
+body.no-intro .hero-wordmark,
+body.no-intro .hero-tagline,
+body.no-intro .hero-content,
+body.no-intro .ws-tabs,
+body.no-intro .diag-item,
+body.no-intro .diag-item::before {
+  transition: none !important;
+}
+
+body.is-unpaired::before {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--warn) 10%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 20% 100%, color-mix(in srgb, var(--warn) 5%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 80% 100%, color-mix(in srgb, var(--warn-deep) 3%, transparent) 0%, transparent 50%);
+}
+
+body.is-success::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 30%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 20% 80%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 80% 80%, color-mix(in srgb, var(--accent) 6%, transparent) 0%, transparent 60%);
+}
+
+/* Workspace is for working — toned-down hint from above instead of the
+   three stacked gradients of the sign-in surface. Selector is more
+   specific than .is-success so it wins when both classes are present. */
+body.is-workspace::before {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 60%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.04;
+  z-index: 1;
+}
+
+main#app {
+  background: transparent;
+  position: relative;
+  z-index: 2;
+  flex: 1;
+}
+
+.tab-shell {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.tab-shell__inner {
+  width: 100%;
+  max-width: var(--workspace-max);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  font-family: var(--font-sans);
+}
+
+/* The held height while a tab's chunk arrives — see the Suspense fallback in `AdminShell`. */
+.tab-shell__waiting {
+  min-height: 60vh;
+}
+
+.tab-shell__inner h1,
+.tab-shell__inner h2,
+.tab-shell__inner h3,
+.tab-shell__inner h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+.tab-shell__inner .setup-shell,
+.tab-shell__inner .content-shell,
+.tab-shell__inner .zones-shell,
+.tab-shell__inner .logs-shell {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  margin: 0;
+  min-height: 0;
+}
+
+.tab-shell__inner .setup-layout,
+.tab-shell__inner .content-layout,
+.tab-shell__inner .zones-layout,
+.tab-shell__inner .logs-layout {
+  width: 100%;
+  margin: 0;
+  min-height: 0;
+}
+
+.tab-shell__inner--pulse-a,
+.tab-shell__inner--pulse-b {
+  animation: tab-fade-soft 260ms ease-out;
+}
+
+button {
+  font-family: inherit;
+}
+
+.btn,
+button.primary,
+button.secondary,
+button.danger,
+button.ghost {
+  border-radius: var(--radius-sm);
+  padding: var(--btn-pad-y) var(--btn-pad-x);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  min-height: var(--control-height);
+}
+
+.btn:not(:disabled):active,
+button.primary:not(:disabled):active,
+button.secondary:not(:disabled):active,
+button.danger:not(:disabled):active,
+button.ghost:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.btn--primary,
+button.primary {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.btn--secondary,
+button.secondary {
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.btn--danger,
+button.danger {
+  border-color: var(--danger);
+  color: var(--white);
+  background: var(--danger);
+}
+
+.btn--ghost,
+button.ghost {
+  background: transparent;
+  border-color: var(--border-soft);
+  color: var(--text);
+}
+
+.btn:disabled,
+button.primary:disabled,
+button.secondary:disabled,
+button.danger:disabled,
+button.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):hover,
+button.primary:not(:disabled):hover,
+button.secondary:not(:disabled):hover,
+button.danger:not(:disabled):hover,
+button.ghost:not(:disabled):hover {
+  transform: none;
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: var(--ring-outline);
+  outline-offset: 2px;
+  box-shadow: var(--ring);
+}
+
+.btn--primary:not(:disabled):hover,
+button.primary:not(:disabled):hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* A light passes over the primary button when asked for attention — the product
+   site's gesture, on the console's own primary. Outline and ring live outside
+   the border box, so the overflow clip never touches them. */
+.btn--primary,
+button.primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn--primary::before,
+button.primary::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(105deg, transparent 40%, color-mix(in srgb, var(--ink) 40%, transparent) 50%, transparent 60%);
+  transform: translateX(-120%);
+  transition: transform 0.7s var(--spring);
+  pointer-events: none;
+}
+
+.btn--primary:not(:disabled):hover::before,
+button.primary:not(:disabled):hover::before {
+  transform: translateX(120%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn--primary::before,
+  button.primary::before {
+    display: none;
+  }
+}
+
+.btn--secondary:not(:disabled):hover,
+button.secondary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.btn--danger:not(:disabled):hover,
+button.danger:not(:disabled):hover {
+  background: var(--danger-deep);
+  border-color: var(--danger-deep);
+}
+
+.btn--ghost:not(:disabled):hover,
+button.ghost:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-color: var(--border-strong);
+}
+
+.btn--compact {
+  border-radius: var(--radius-pill);
+  padding: 0.1rem 0.6rem;
+  font-size: var(--fs-xs);
+  min-height: var(--control-height-compact);
+  text-transform: none;
+}
+
+.btn--compact:not(:disabled):hover {
+  transform: none;
+}
+
+.btn--danger-link {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--danger);
+}
+
+.btn--danger-link:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger-deep) 6%, transparent);
+  border-color: color-mix(in srgb, var(--danger-deep) 18%, transparent);
+}
+
+select {
+  appearance: none;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 2.4rem 0.55rem 0.9rem;
+  background-color: var(--bg-input);
+  /* Chevron first: it is the topmost layer, so the surface gradient below it
+     fills the control without painting over the only hint that this opens. */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23e9eef6' stroke-width='1.6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, var(--bg-card) 0%, var(--surface-1) 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 0.9rem center, 0 0;
+  background-size: 0.9rem, 100% 100%;
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  color: var(--text);
+  line-height: 1.2;
+  min-height: var(--control-height);
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: var(--ring);
+}
+
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: var(--surface-2);
+  color: var(--text-dim);
+}
+
+/* Default styling for naked inputs (without a wrapping component). Wrapped in
+   :where() so the specificity is 0,0,0 — any component-specific rule wins
+   without needing defensive selectors. */
+:where(
+  input[type='text'],
+  input[type='number'],
+  input[type='password'],
+  input[type='search'],
+  textarea
+) {
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.8rem;
+  background: var(--bg-input);
+  font-size: var(--fs-md);
+  color: var(--text);
+  font-family: var(--font-sans);
+  min-height: var(--control-height);
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+:where(
+  input[type='text']:focus,
+  input[type='number']:focus,
+  input[type='password']:focus,
+  input[type='search']:focus,
+  textarea:focus
+) {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: var(--ring);
+}
+
+:where(
+  input[type='text']:disabled,
+  input[type='number']:disabled,
+  input[type='password']:disabled,
+  input[type='search']:disabled,
+  textarea:disabled
+) {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@keyframes shell-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================
+   The pointer's own light
+   ------------------------------------------------------------
+   Card surfaces answer the hand that reaches for them: a soft
+   radial highlight rides the pointer, fed as --mx/--my by one
+   delegated listener in App.tsx. Ported from the product site,
+   where every card does this. Hover-capable pointers only; the
+   token flips per theme (white light on dark, ink on light).
+   ============================================================ */
+.section-card,
+.zones-card,
+.zones-device,
+.source-card,
+.share-card,
+.setup-section {
+  position: relative;
+}
+
+.section-card::after,
+.zones-card::after,
+.zones-device::after,
+.source-card::after,
+.share-card::after,
+.setup-section::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), var(--spotlight), transparent 70%);
+}
+
+@media (hover: hover) {
+  .section-card:hover::after,
+  .zones-card:hover::after,
+  .zones-device:hover::after,
+  .source-card:hover::after,
+  .share-card:hover::after,
+  .setup-section:hover::after {
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   The light travels with the tab
+   ------------------------------------------------------------
+   The site's ambient-hue journey at console scale: Access runs
+   teal, Logs runs console-blue, everything else keeps the house
+   green. Whisper-level on purpose — light temperature, not
+   decoration. body::before already transitions its background,
+   so the hue glides between tabs. The light theme keeps its own
+   single radial (its ::before override is !important).
+   ============================================================ */
+body.is-workspace[data-tab='access']::before {
+  background: radial-gradient(ellipse 90% 50% at 50% 0%, rgba(45, 212, 191, 0.09) 0%, transparent 60%); /* brand */
+}
+
+body.is-workspace[data-tab='logs']::before {
+  background: radial-gradient(ellipse 90% 50% at 50% 0%, color-mix(in srgb, var(--info) 7%, transparent) 0%, transparent 60%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-content,
+  .hero-info dl > div {
+    animation: none;
+  }
+
+  .content-shell,
+  .zones-shell,
+  .logs-shell,
+  .content-card,
+  .zone-row,
+  .logs-hero,
+  .logs-header,
+  .logs-output {
+    animation: none !important;
+  }
+}

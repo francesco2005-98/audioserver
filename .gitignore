@@ -1,5 +1,8 @@
 # Ignore the server build. The protocol libraries under packages/ ship their dist.
+# The admin and player builds are copied into public/ by fetch:admin and fetch:player.
 /dist
+ui/admin/dist
+ui/player/dist
 
 # Ignore Config files
 data

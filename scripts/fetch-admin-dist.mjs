@@ -1,17 +1,25 @@
-import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { cp, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// The admin interface is not downloaded from another project. A checkout that
-// already has public/admin is left as it is; otherwise a short placeholder is written
-// so the server still has a page to serve.
-const targetDir = join(process.cwd(), 'public', 'admin');
-const indexPath = join(targetDir, 'index.html');
-await fs.mkdir(targetDir, { recursive: true });
-try {
-  await fs.access(indexPath);
-} catch {
-  await fs.writeFile(
-    indexPath,
-    '<!doctype html><meta charset="utf-8"><title>Audioserver</title><p>The admin interface is not included in this build.</p>\n',
-  );
+const root = process.cwd();
+const sourceDir = join(root, 'ui', 'admin');
+const distDir = join(sourceDir, 'dist');
+const targetDir = join(root, 'public', 'admin');
+
+function run(cmd, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { cwd, stdio: 'inherit' });
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} ${args.join(' ')} exited with code ${code}`));
+    });
+  });
 }
+
+await run('npm', ['ci'], sourceDir);
+await run('npm', ['run', 'build'], sourceDir);
+await rm(targetDir, { recursive: true, force: true });
+await mkdir(targetDir, { recursive: true });
+await cp(distDir, targetDir, { recursive: true });

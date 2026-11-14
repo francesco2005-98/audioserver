@@ -1,0 +1,4235 @@
+/*
+ * The app's frame on a desk — see `art/Shell.tsx` — and the look every view inside it shares.
+ *
+ * A hi-fi component, not an app: black, silver and hairlines. The sleeve is the only colour on the
+ * screen and green is only ever a verdict. Labels are small spaced capitals, the way a faceplate is
+ * engraved; titles are set light; figures are mono. Nothing is boxed that a line can separate.
+ *
+ * Scoped under `.cx-root[data-shell]` where it is the frame's own, which the app sets on a desk and
+ * never on a phone.
+ */
+
+.cx-root[data-shell] {
+  background: #09090a;
+}
+
+/* The faintest lift behind the middle of the page: a black with depth rather than a void. */
+.cx-root[data-shell]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 56% 38%, rgb(255 255 255 / 2.6%), transparent 60%);
+  pointer-events: none;
+}
+
+/* Once the splash has left, the sidebar's mark is the one that flies to the console — see `Root`. */
+html[data-arrived] .cx-side-mark {
+  view-transition-name: audioserver-mark;
+}
+
+/* --- the grid: sidebar | pane, with the bar under the pane ------------------- */
+
+.cx-shell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  transition: grid-template-columns 0.9s var(--cx-ease);
+}
+
+/* --- the sidebar: an index, in type ------------------------------------------- */
+
+.cx-side {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  min-height: 0;
+  padding: 30px 26px 22px 30px;
+  overflow: hidden auto;
+  border-right: 1px solid rgb(255 255 255 / 7%);
+  transition:
+    opacity 0.6s var(--cx-ease),
+    visibility 0.6s step-end;
+}
+
+.cx-side-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--t1);
+  text-decoration: none;
+}
+
+/* The mark is the product's own green, here as in the admin: its signature, not a control. */
+.cx-side-mark {
+  width: 26px;
+  height: 21px;
+  color: var(--accent);
+}
+
+.cx-root .cx-side-word {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.cx-side-brand .cx-stale {
+  margin-left: auto;
+}
+
+.cx-sgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.cx-sgroup-foot {
+  margin-top: auto;
+}
+
+.cx-sgroup-lbl {
+  margin-bottom: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--t6);
+}
+
+.cx-snav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  font-size: 13.5px;
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--t4);
+  text-decoration: none;
+  text-align: left;
+}
+
+.cx-snav:hover {
+  color: var(--t1);
+}
+
+/* Where you are: the word in white and a line at the window's edge. No box. */
+.cx-snav[data-on] {
+  color: var(--t1);
+}
+
+.cx-snav[data-on]::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: -30px;
+  width: 2px;
+  background: var(--t1);
+}
+
+.cx-snav[data-quiet] {
+  color: var(--t6);
+}
+
+.cx-snav-txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-snav-extra {
+  font-style: normal;
+  color: var(--t6);
+}
+
+.cx-snav-k {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--t6);
+}
+
+/* A room's state, as a dot: white while playing, grey while paused, dark when silent. */
+.cx-sdot-state {
+  display: inline-block;
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t8);
+  transition: background 0.3s;
+}
+
+.cx-sdot-state[data-paused] {
+  background: var(--t5);
+}
+
+.cx-sdot-state[data-playing] {
+  background: var(--t1);
+  box-shadow: 0 0 8px rgb(255 255 255 / 60%);
+}
+
+/* The verdict, and the only green in the frame. */
+.cx-sdot-state[data-ok] {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* --- the pane: the page itself, beside the index -------------------------------- */
+
+.cx-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.cx-pane > .cx-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- the player bar: a strip under a hairline ----------------------------------- */
+
+.cx-pbar {
+  position: relative;
+  z-index: 3;
+  /* Three columns that cannot run into each other: what plays, the transport, the room. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 440px) minmax(0, 1fr);
+  column-gap: 24px;
+  align-items: center;
+  flex: none;
+  height: 84px;
+  margin-left: 232px;
+  padding: 0 30px;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+  transition:
+    opacity 0.6s var(--cx-ease),
+    visibility 0.6s step-end;
+}
+
+/* The sidebar's rule runs the height of the window, past the bar. */
+.cx-root[data-shell]:not([data-idle])::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 231px;
+  z-index: 3;
+  width: 1px;
+  height: 84px;
+  background: rgb(255 255 255 / 7%);
+}
+
+.cx-pbar-np {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cx-pbar-cov {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--cx-cover);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 12%);
+  color: rgb(255 255 255 / 16%);
+}
+
+.cx-pbar-cov[data-empty] {
+  background: none;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 7%);
+}
+
+.cx-pbar-cov-art {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.cx-pbar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cx-pbar-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--t1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-pbar-sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--t6);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-pbar-link {
+  text-align: left;
+  color: var(--t5);
+}
+
+.cx-pbar-link:hover {
+  color: var(--t1);
+}
+
+.cx-pbar-fav {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--t6);
+}
+
+.cx-pbar-fav:hover,
+.cx-pbar-fav[data-on] {
+  color: var(--t1);
+}
+
+.cx-pbar-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cx-pbar-tl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  height: 18px;
+}
+
+.cx-pbar-tl .cx-bar {
+  flex: 1;
+}
+
+.cx-pbar-tl .cx-bar-rail {
+  height: 1px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.cx-pbar-time {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--t6);
+}
+
+.cx-pbar-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--t3);
+}
+
+.cx-pbar-live i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t1);
+  animation: cx-breathe 2s ease-in-out infinite;
+}
+
+/* The bar's play button is a ring, like the instrument it sits on. */
+.cx-pbar .cx-tr-play {
+  width: 40px;
+  height: 40px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 55%);
+}
+
+.cx-pbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cx-pbar-vol .cx-vol-slider {
+  width: 96px;
+}
+
+.cx-root .cx-pbar-room {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-display);
+  height: 30px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-pbar-room:hover {
+  color: var(--t1);
+}
+
+.cx-pbar-ic {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--t6);
+}
+
+.cx-pbar-ic:hover {
+  color: var(--t1);
+}
+
+/* --- section heads in the display face: the catalogue's labels read as headings, counts stay mono --- */
+
+/* The labels are written lowercase for the mono face; as headings they start with a capital. */
+.cx-root .cx-sec-lbl.mono::first-letter,
+.cx-root .cx-hsec-lbl.mono::first-letter,
+.cx-root .cx-upnext-lbl.mono::first-letter,
+.cx-root .cx-toc-lbl.mono::first-letter {
+  text-transform: uppercase;
+}
+
+.cx-root .cx-sec-lbl.mono,
+.cx-root .cx-hsec-lbl.mono,
+.cx-root .cx-upnext-lbl.mono {
+  display: inline-block;
+}
+
+.cx-root .cx-toc-lbl.mono {
+  display: inline-block;
+}
+
+/* --- one gutter for every view ---------------------------------------------------- */
+
+/*
+ * The catalogue measured its margin from the window (`6vw`), the desk and the reading from nothing in
+ * particular, and the three disagreed by half a hundred pixels: the whole left edge jumped when you went
+ * from Spotify to Rooms. One token, read by every view, so the pane has one kantlijn.
+ */
+.cx-root[data-shell] {
+  --pane-pad: 40px;
+}
+
+.cx-root[data-shell] .cx-browse-inner {
+  --browse-pad: var(--pane-pad);
+}
+
+.cx-root .cx-shelf-row {
+  mask-image: linear-gradient(
+    90deg,
+    #000 calc(100% - var(--browse-pad) - 56px),
+    transparent calc(100% - var(--browse-pad) + 6px)
+  );
+}
+
+/* --- one chip for every button in the pane ------------------------------------------- */
+
+/*
+ * The catalogue's actions were 40px capsules with 0.22em tracking; the bar's room and lamp are 30px chips
+ * with 0.16em. Side by side on one screen they were two generations of the same idea, so the pane takes
+ * the bar's. Play is the one filled chip — the one action here with a consequence, the same figure as
+ * the bar's play ring.
+ */
+.cx-root .cx-play-btn,
+.cx-root .cx-shuffle-btn,
+.cx-root .cx-inputs-empty-go {
+  height: 34px;
+  padding: 0 16px 0 14px;
+  gap: 9px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 17px;
+  background: rgb(255 255 255 / 2.5%);
+  color: var(--t3);
+}
+
+.cx-root .cx-shuffle-btn:hover,
+.cx-root .cx-inputs-empty-go:hover {
+  border-color: rgb(255 255 255 / 20%);
+  color: var(--t1);
+}
+
+.cx-root .cx-play-btn {
+  border-color: transparent;
+  background: var(--t1);
+  color: #0b0b0d;
+}
+
+.cx-root .cx-play-btn:hover {
+  background: #fff;
+  color: #0b0b0d;
+}
+
+/* --- one head for every view: the name small in the display face, the search beside it --- */
+
+/*
+ * The catalogue's head was a 54px title with a back word above it, sized for a page that had the window.
+ * Inside the frame every view opens the same way — a name at 24px, what it is beside it, the one control
+ * on the right — so Music, a service, Inputs, Rooms and Signal read as rooms of one house. The poster-size
+ * name stays for a record or an artist, where the name is the subject (see `.cx-detail`).
+ */
+.cx-root[data-shell] .cx-browse-inner {
+  padding-top: 18px;
+}
+
+.cx-root[data-shell] .cx-browse-head {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 40px;
+  margin-bottom: 22px;
+}
+
+.cx-root[data-shell] .cx-browse-title-row {
+  flex: 1;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 14px;
+}
+
+.cx-root .cx-browse-title {
+  font-size: 24px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-root .cx-browse-count {
+  color: var(--t5);
+}
+
+/* A service with a record put forward keeps its name as the head too: the billboard below carries the
+   record's name at display size, and the eyebrow treatment the bare window gave the service name would
+   leave this one view with a different head from every other. */
+.cx-root .cx-browse-inner[data-spotlight]:not([data-root]) .cx-browse-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.1;
+  text-transform: none;
+  color: var(--t1);
+}
+
+/* A shelf opened out of a door inside a service (Spotify's Popular Playlists) heads itself the way the
+   server's own sections do (Apple Music's Voor jou), so one page does not carry two kinds of shelf head. */
+
+/* The front has a name again: the sidebar's word is lit, and the pane says what it is showing. */
+.cx-root[data-shell] .cx-browse-inner[data-root] .cx-browse-title {
+  display: block;
+}
+
+.cx-root[data-shell] .cx-browse-inner[data-root] .cx-browse-title-row {
+  justify-content: space-between;
+}
+
+/* The way back, only once there is somewhere to go back *to* inside this listing: from the front of a
+   service the sidebar is the way out, and a word that duplicates it is furniture. A search keeps it,
+   because backing out of a search is clearing it. */
+.cx-root[data-shell] .cx-browse-inner[data-depth='1']:not([data-search]) .cx-browse-back {
+  display: none;
+}
+
+.cx-root[data-shell] .cx-browse-back {
+  margin-bottom: 10px;
+}
+
+/*
+ * The column under the record has the room the transport used to take, so the rows of what is next are not
+ * rationed by the window's height or the page's width the way the bare stage rationed them: seven rows
+ * fit under a 96px name on any desk this frame is drawn on.
+ */
+.cx-root[data-shell] .cx-stage .cx-upnext-list li:nth-child(n + 2) {
+  display: list-item;
+}
+
+/* Rationed again only by height, and more generously than the bare stage: four rows on an ordinary
+   desk, two on a short one, so the name never leaves the top of the pane. */
+@media (max-height: 1040px) {
+  .cx-root[data-shell] .cx-stage .cx-upnext-list li:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+@media (max-height: 820px) {
+  .cx-root[data-shell] .cx-stage .cx-upnext-list li:nth-child(n + 3) {
+    display: none;
+  }
+}
+
+/* A window too short for a list keeps the record and its name and drops what follows whole — the
+   label with the rows, never a heading over nothing. */
+@media (max-height: 640px) {
+  .cx-root[data-shell] .cx-stage .cx-stage-foot {
+    display: none;
+  }
+}
+
+/* --- the desk, as a page in the pane ------------------------------------------ */
+
+.cx-deskpage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 26px 40px 0;
+  animation: cx-view-in 0.3s var(--cx-ease) both;
+}
+
+.cx-deskpage-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  margin-bottom: 22px;
+}
+
+.cx-deskpage-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding-bottom: 8px;
+  overflow-y: auto;
+}
+
+.cx-deskpage-note {
+  flex: none;
+  margin: 18px 0 0;
+  padding: 14px 0 22px;
+  border-top: 1px solid var(--hair);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t5);
+}
+
+/* --- what the frame asks of the views inside it ------------------------------ */
+
+/*
+ * The composition, sized for the pane rather than the window.
+ *
+ * The stage measures its sleeve and its column in viewport units because, on a bare window, the viewport
+ * is the page. Inside the frame the page is the pane — 228px and two gutters narrower — so the same
+ * fractions overflow it. Smaller shares of the same viewport, and the pair fits at 1280 and composes at 2560.
+ */
+.cx-root[data-shell]:not([data-idle]) .cx-stage {
+  padding: 18px clamp(24px, 3vw, 48px);
+}
+
+/* --- the keyboard ------------------------------------------------------------- */
+
+.cx-snav:focus-visible,
+.cx-pbar-ic:focus-visible,
+.cx-pbar-fav:focus-visible,
+.cx-pbar-room:focus-visible,
+.cx-pbar-cov:focus-visible,
+.cx-side-brand:focus-visible {
+  outline: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* --- at rest: the record, with its disc ------------------------------------------ */
+
+/*
+ * The record rest redrawn for the frame: a sleeve with a disc behind it, the words to the right.
+ *
+ * The spread's full-bleed sleeve was right for a window with a bar across the top. Here the frame has
+ * gone and the record is what is left, so it is drawn as a record — the sleeve with an edge and a
+ * shadow, the disc out of it by half, the label the sleeve's own artwork. The disc turns while the
+ * room plays and stops when it pauses; the light on it does not turn, because light does not.
+ */
+.cx-root[data-shell][data-idle][data-rest='record'] .cx-stage[data-spread] .cx-stage-inner {
+  padding-left: clamp(40px, 6vw, 120px);
+  gap: clamp(40px, 5vw, 96px);
+}
+
+.cx-root[data-shell][data-idle][data-rest='record'] .cx-stage[data-spread] .cx-stage-art {
+  --rest-s: min(60vh, 33vw);
+
+  width: var(--rest-s);
+  margin-right: calc(var(--rest-s) * 0.46);
+  overflow: visible;
+}
+
+.cx-root[data-shell][data-idle][data-rest='record'] .cx-stage[data-spread] .cx-stage-art .cx-cover {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  border-radius: 4px;
+  box-shadow:
+    0 60px 120px -40px rgb(0 0 0 / 90%),
+    0 2px 6px rgb(0 0 0 / 50%),
+    inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+/* A label, not a headline: one long word breaks rather than leaving the page. */
+.cx-root[data-shell][data-idle][data-rest='record'] .cx-stage[data-spread] .cx-title {
+  overflow-wrap: anywhere;
+}
+
+.cx-root[data-shell][data-idle][data-rest='record'] .cx-stage[data-spread] .cx-stage-meta {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-top: 0;
+  padding-right: clamp(40px, 6vw, 120px);
+  background: transparent;
+}
+
+.cx-disc {
+  position: absolute;
+  top: 50%;
+  left: 52%;
+  z-index: 0;
+  width: 94%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  translate: 0 -50%;
+  box-shadow: 0 calc(var(--rest-s, 400px) * 0.06) calc(var(--rest-s, 400px) * 0.14) calc(var(--rest-s, 400px) * -0.04) rgb(0 0 0 / 85%);
+}
+
+.cx-disc-platter {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 32%, rgb(0 0 0 / 40%) 32.4%, transparent 34.5%),
+    radial-gradient(circle, transparent 0 46%, rgb(255 255 255 / 3%) 46.5%, transparent 47.5%, transparent 68%, rgb(255 255 255 / 3%) 68.5%, transparent 69.5%),
+    repeating-radial-gradient(circle at 50% 50%, #0e0e11 0 1px, #232328 1px 2px, #111114 2px 3.2px),
+    #111114;
+  animation: cx-spin 1.8s linear infinite paused;
+}
+
+.cx-disc[data-playing] .cx-disc-platter {
+  animation-play-state: running;
+}
+
+.cx-disc-label {
+  position: absolute;
+  inset: 32%;
+  overflow: hidden;
+  border-radius: 50%;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  filter: saturate(0.9) brightness(0.9);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 60%),
+    0 0 0 2px rgb(255 255 255 / 4%);
+}
+
+.cx-disc-label::after {
+  content: '';
+  position: absolute;
+  inset: 44%;
+  border-radius: 50%;
+  background: #0a0a0c;
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 90%),
+    0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+.cx-disc-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    conic-gradient(from 195deg at 50% 50%, transparent 0deg, rgb(255 255 255 / 16%) 24deg, rgb(255 255 255 / 5%) 44deg, transparent 70deg, transparent 176deg, rgb(255 255 255 / 11%) 204deg, transparent 236deg),
+    radial-gradient(circle at 36% 30%, rgb(255 255 255 / 8%), transparent 60%);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 9%),
+    inset 0 0 calc(var(--rest-s, 400px) * 0.03) rgb(0 0 0 / 60%);
+}
+
+@keyframes cx-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-disc-platter {
+    animation: none;
+  }
+}
+
+/* --- left alone: the frame steps back and the record has the screen -------- */
+
+.cx-root[data-shell][data-idle] .cx-shell {
+  grid-template-columns: 0 minmax(0, 1fr);
+  padding: 0;
+}
+
+.cx-root[data-shell][data-idle] .cx-side,
+.cx-root[data-shell][data-idle] .cx-pbar {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.cx-root[data-shell][data-idle] .cx-pbar {
+  height: 0;
+  overflow: hidden;
+}
+
+.cx-root[data-shell][data-idle] .cx-pane {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* --- a record or an artist, in the frame ------------------------------------------- */
+
+/*
+ * The bare window drew a record as a spread: the sleeve the whole left half, from the window's top edge
+ * to its bottom. Inside the frame the left half's edges are the pane's rounded corners, so the sleeve
+ * becomes a card again — within the gutter, corners and shadow of its own, the bloom behind it — and the
+ * words keep the right column. Same grid, different measure.
+ */
+@media (min-width: 1280px) {
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) {
+    --page-pad: var(--pane-pad);
+
+    grid-template-columns: min(calc(100vh - 92px - 10px - 2 * var(--pane-pad)), 40vw) minmax(0, 1fr);
+    column-gap: clamp(32px, 3.6vw, 64px);
+    padding: var(--pane-pad) 0 0 var(--pane-pad);
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-art {
+    top: var(--pane-pad);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-cover {
+    box-shadow:
+      0 40px 80px -38px rgb(0 0 0 / 95%),
+      inset 0 0 0 1px rgb(255 255 255 / 12%);
+  }
+
+  /* A person without a photograph of their own is the circle; a photograph is a card like a sleeve. */
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail[data-portrait]:not([data-photo]) .cx-detail-cover {
+    border-radius: 50%;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-art {
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-cover {
+    border-radius: 8px;
+    box-shadow:
+      0 40px 80px -38px rgb(0 0 0 / 95%),
+      inset 0 0 0 1px rgb(255 255 255 / 12%);
+  }
+
+  /* The seam belonged to a photograph that ran to the fold; a card has edges of its own. */
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail[data-portrait][data-photo]) .cx-detail-art::after {
+    display: none;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-bloom {
+    display: block;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) > .cx-browse-back {
+    margin-top: 0;
+  }
+
+  .cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-kind {
+    margin-top: 18px;
+  }
+}
+
+/* --- motion: the small answers a control gives a hand ----------------------------------- */
+
+.cx-root .cx-play-btn,
+.cx-root .cx-shuffle-btn,
+.cx-root .cx-inputs-empty-go,
+.cx-pbar-room,
+.cx-pbar-ic,
+.cx-pbar-fav,
+.cx-snav {
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s,
+    transform 0.22s var(--cx-ease);
+}
+
+.cx-root .cx-play-btn:hover,
+.cx-root .cx-shuffle-btn:hover,
+.cx-root .cx-inputs-empty-go:hover,
+.cx-pbar-room:hover {
+  transform: translateY(-1px);
+}
+
+.cx-root .cx-play-btn:active,
+.cx-root .cx-shuffle-btn:active,
+.cx-pbar-room:active,
+.cx-pbar-ic:active,
+.cx-snav:active {
+  transform: scale(0.97);
+}
+
+.cx-pbar .cx-tr-play {
+  transition:
+    transform 0.22s var(--cx-ease),
+    background 0.18s,
+    color 0.18s;
+}
+
+.cx-pbar .cx-tr-play:hover {
+  transform: scale(1.06);
+}
+
+.cx-pbar .cx-tr-play:active {
+  transform: scale(0.95);
+}
+
+/* --- a page with nothing on it ---------------------------------------------------------- */
+
+.cx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 52ch;
+  padding: 28px 0 40px;
+}
+
+.cx-empty-head {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--t2);
+}
+
+.cx-empty-note {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--t5);
+}
+
+.cx-empty-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cx-empty-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 17px;
+  background: rgb(255 255 255 / 3%);
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--t3);
+  cursor: pointer;
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s,
+    transform 0.22s var(--cx-ease);
+}
+
+.cx-empty-act:hover {
+  color: var(--t1);
+  border-color: rgb(255 255 255 / 18%);
+  background: rgb(255 255 255 / 6%);
+  transform: translateY(-1px);
+}
+
+.cx-empty-act:active {
+  transform: scale(0.97);
+}
+
+/* --- a view change is one movement ------------------------------------------------------- */
+
+/* The pane crosses from one page to the next; the sidebar and the bar, which did not change, hold still. */
+.cx-root[data-shell] .cx-pane {
+  view-transition-name: cx-pane;
+}
+
+.cx-root[data-shell] .cx-side {
+  view-transition-name: cx-side;
+}
+
+.cx-root[data-shell] .cx-pbar {
+  view-transition-name: cx-bar;
+}
+
+::view-transition-old(cx-pane) {
+  animation: cx-vt-out 0.16s ease-in both;
+}
+
+::view-transition-new(cx-pane) {
+  animation: cx-vt-in 0.28s var(--cx-ease) both;
+}
+
+@keyframes cx-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cx-vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* --- a quiet room ------------------------------------------------------------------------ */
+
+/* The bar's sleeve with nothing on: the mark, faint, rather than a grey square. */
+.cx-pbar-cov[data-empty] {
+  display: grid;
+  place-items: center;
+  color: rgb(255 255 255 / 16%);
+}
+
+.cx-pbar-cov-mark {
+  width: 24px;
+  height: 20px;
+}
+
+/* The last record, offered back. */
+.cx-cover-last {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 22px;
+  background-position: center;
+  background-size: cover;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-cover-last-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(10 10 12 / 10%) 30%, rgb(10 10 12 / 82%) 100%);
+  transition: opacity 0.3s var(--cx-ease);
+}
+
+.cx-cover-last-txt {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cx-cover-last-lbl {
+  margin-bottom: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 60%);
+}
+
+.cx-cover-last-title {
+  overflow: hidden;
+  font-size: clamp(16px, 2.2cqw, 24px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: #fff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 50%);
+}
+
+.cx-cover-last-artist {
+  overflow: hidden;
+  font-size: 13px;
+  color: rgb(255 255 255 / 72%);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-cover-last-go {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  background: #fff;
+  text-transform: uppercase;
+  color: #0a0a0c;
+  transition: transform 0.22s var(--cx-ease);
+}
+
+.cx-cover-last:hover .cx-cover-last-go {
+  transform: translateY(-1px);
+}
+
+.cx-cover-last:hover .cx-cover-last-scrim {
+  opacity: 0.9;
+}
+
+/* The words under `Nothing playing`, as the chips every other page uses. */
+.cx-root .cx-cta {
+  gap: 8px;
+  margin-top: 26px;
+}
+
+.cx-root .cx-cta button {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 17px;
+  background: rgb(255 255 255 / 3%);
+  text-transform: uppercase;
+  color: var(--t3);
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s,
+    transform 0.22s var(--cx-ease);
+}
+
+.cx-root .cx-cta button:first-child {
+  border-color: transparent;
+  background: #fff;
+  color: #0a0a0c;
+}
+
+.cx-root .cx-cta button:hover {
+  color: var(--t1);
+  transform: translateY(-1px);
+}
+
+.cx-root .cx-cta button:first-child:hover {
+  color: #0a0a0c;
+}
+
+.cx-root .cx-cta button:active {
+  transform: scale(0.97);
+}
+
+/* --- the same recording, once ---------------------------------------------------------- */
+
+.cx-root .cx-tnote {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 22px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--t5);
+  transition: color 0.18s;
+}
+
+.cx-tnote svg {
+  transition: transform 0.2s var(--cx-ease);
+}
+
+.cx-tnote[data-open] svg {
+  transform: rotate(180deg);
+}
+
+.cx-tnote:hover {
+  color: var(--t1);
+}
+
+/* An edition, under the recording that stands for it: indented, its number withheld. */
+.cx-trow[data-edition] {
+  padding-left: 28px;
+  opacity: 0.8;
+}
+
+.cx-trow[data-edition] .cx-tidx {
+  visibility: hidden;
+}
+
+/* --- a thumb's worth of target --------------------------------------------------------- */
+
+/*
+ * A chip looks 34px tall and is 44px to the thumb. The visible pill stays what it is; the element's
+ * reach grows on every side to what the hand measures. A row that scrolls clips its children, so the
+ * two rows that do (the ways in on home, a service's contents) carry the reach as their own padding.
+ * The transport's own buttons are drawn at 44px: they are the controls a thumb finds in the dark.
+ */
+@media (max-width: 979px) {
+  .cx-root .cx-play-btn,
+  .cx-root .cx-shuffle-btn,
+  .cx-root .cx-inputs-empty-go,
+  .cx-root .cx-sec-more,
+  .cx-root .cx-empty-act,
+  .cx-root .cx-cta button,
+  .cx-root .cx-tnote,
+  .cx-root .cx-tact,
+  .cx-root .cx-toc-item,
+  .cx-root .cx-hsec-right,
+  .cx-root .cx-upnext-lbl,
+  .cx-root .cx-search-note-go,
+  .cx-root .cx-browse-back,
+  .cx-root .cx-install-go {
+    position: relative;
+  }
+
+  .cx-root .cx-play-btn::after,
+  .cx-root .cx-shuffle-btn::after,
+  .cx-root .cx-inputs-empty-go::after,
+  .cx-root .cx-sec-more::after,
+  .cx-root .cx-empty-act::after,
+  .cx-root .cx-cta button::after,
+  .cx-root .cx-tnote::after,
+  .cx-root .cx-tact::after,
+  .cx-root .cx-toc-item::after,
+  .cx-root .cx-install-go::after {
+    content: '';
+    position: absolute;
+    inset: -8px -6px;
+  }
+
+  /* A line of type as a button: the reach is most of a row above and below it. */
+  .cx-root .cx-hsec-right::after,
+  .cx-root .cx-upnext-lbl::after,
+  .cx-root .cx-search-note-go::after,
+  .cx-root .cx-browse-back::after {
+    content: '';
+    position: absolute;
+    inset: -14px -8px;
+  }
+
+  .cx-root .cx-toc {
+    padding: 4px 0 14px;
+  }
+
+  /* A line of type that clips its own overflow clips its reach as well: these are simply 44px tall. */
+  .cx-root .cx-toc-item,
+  .cx-root .cx-hsec-right,
+  .cx-root .cx-upnext-lbl,
+  .cx-root .cx-browse-back,
+  .cx-root .cx-search-note-go {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* The transport, at the size of a thumb; the gaps give back what the buttons take. */
+  .cx-root .cx-transport[data-size='phone'] {
+    gap: 16px;
+  }
+
+  .cx-root .cx-transport[data-size='phone'] .cx-tr-skip,
+  .cx-root .cx-transport[data-size='phone'] .cx-tr-side {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ==========================================================================================
+ * The look, shared by every view: light titles, engraved labels, the sleeve as an object.
+ * ========================================================================================== */
+
+/* Titles are set light. A name at 300 on black reads as a nameplate; at 800 it reads as a poster. */
+.cx-root .disp {
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+.cx-root .cx-sec-lbl.mono,
+.cx-root .cx-hsec-lbl.mono,
+.cx-root .cx-upnext-lbl.mono,
+.cx-root .cx-toc-lbl.mono,
+.cx-root .cx-browse-body[data-toc] .cx-doorshelf-name {
+  font-family: var(--font-label);
+  font-size-adjust: 0.6;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+.cx-root .cx-browse-title,
+.cx-root .cx-browse-inner[data-spotlight]:not([data-root]) .cx-browse-title {
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+/* A sleeve has the corners of a sleeve, and an edge. */
+.cx-root .cx-cover,
+.cx-root .cx-tile-cov,
+.cx-root .cx-upnext-art,
+.cx-root .cx-tthumb,
+.cx-root[data-shell] .cx-browse-inner[data-detail]:has(.cx-detail) .cx-detail-cover {
+  border-radius: 3px;
+}
+
+.cx-root .cx-play-btn,
+.cx-root .cx-shuffle-btn,
+.cx-root .cx-inputs-empty-go,
+.cx-root .cx-empty-act,
+.cx-root .cx-cta button,
+.cx-root .cx-cover-last-go {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+/* --- the stage: one record, and room around it ---------------------------------------- */
+
+.cx-root[data-shell]:not([data-idle]) .cx-stage-inner {
+  --cx-cover-size: min(480px, 34vw, 62vh);
+
+  gap: clamp(48px, 6vw, 88px);
+}
+
+.cx-root[data-shell]:not([data-idle]) .cx-stage-meta {
+  width: min(520px, 36vw);
+}
+
+.cx-root[data-shell]:not([data-idle]) .cx-stage .cx-cover {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 9%),
+    0 50px 90px -40px #000,
+    0 24px 40px -24px rgb(0 0 0 / 80%);
+}
+
+/* The name first, then who: the column reads title, artist, record. */
+.cx-root[data-shell] .cx-stage-meta > .cx-eyebrow {
+  order: 0;
+}
+
+.cx-root[data-shell] .cx-stage-meta > .cx-titlebox {
+  order: 1;
+  margin-top: 22px;
+}
+
+/* No coloured light under the sleeve: its shadow is black, and it is the only colour there is. */
+.cx-root[data-shell] .cx-stage .cx-bloom {
+  display: none;
+}
+
+.cx-root[data-shell] .cx-stage-meta > .cx-artistrow {
+  order: 2;
+  margin-top: 14px;
+}
+
+/* The edition's row is kept whether or not it has anything to say, so it stands last: empty, it is
+   nothing under the record's name rather than a gap above it. */
+.cx-root[data-shell] .cx-stage-meta > .cx-albumrow {
+  order: 3;
+}
+
+.cx-root[data-shell] .cx-stage-meta > .cx-title-tags {
+  order: 4;
+  margin-top: 10px;
+}
+
+.cx-root[data-shell] .cx-stage-meta > .cx-error,
+.cx-root[data-shell] .cx-stage-meta > .cx-cta,
+.cx-root[data-shell] .cx-stage-meta > .cx-else {
+  order: 5;
+}
+
+.cx-root[data-shell] .cx-stage-meta > .cx-stage-foot {
+  order: 6;
+  margin-top: 44px;
+}
+
+.cx-root[data-shell] .cx-title {
+  font-weight: 300;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.cx-root[data-shell] .cx-artist {
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--t3);
+}
+
+/* --- home — see `House` ------------------------------------------------------------- */
+
+.cx-home {
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+  height: 100%;
+  min-height: 0;
+  padding: 44px var(--pane-pad) 40px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.cx-home::-webkit-scrollbar {
+  display: none;
+}
+
+.cx-home-head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: none;
+}
+
+.cx-root .cx-home-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--t5);
+}
+
+.cx-root .cx-home-lbl[data-dim] {
+  color: var(--t7);
+}
+
+.cx-root .cx-home-lbl[data-act] {
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-root .cx-home-lbl[data-act]:hover {
+  color: var(--t1);
+}
+
+.cx-home-greet {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--t1);
+}
+
+.cx-home-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: none;
+  min-width: 0;
+}
+
+.cx-home-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cx-home-house {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.cx-home-room {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 208px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-home-room-cov {
+  width: 208px;
+  height: 208px;
+  margin-bottom: 14px;
+  border-radius: 3px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 8%),
+    0 24px 40px -24px #000;
+  transition:
+    opacity 0.3s var(--cx-ease),
+    transform 0.3s var(--cx-ease),
+    box-shadow 0.3s var(--cx-ease);
+}
+
+.cx-home-room:not([data-on]) .cx-home-room-cov {
+  opacity: 0.5;
+}
+
+.cx-home-room:hover .cx-home-room-cov {
+  transform: translateY(-3px);
+}
+
+.cx-home-room[data-current] .cx-home-room-cov {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 34%),
+    0 24px 40px -24px #000;
+}
+
+.cx-home-room[data-over] .cx-home-room-cov {
+  box-shadow:
+    0 0 0 2px var(--t1),
+    0 24px 40px -24px #000;
+}
+
+.cx-root .cx-home-room-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--t4);
+}
+
+.cx-home-room-name i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t7);
+}
+
+.cx-home-room[data-on] .cx-home-room-name i {
+  background: var(--t1);
+  box-shadow: 0 0 8px rgb(255 255 255 / 60%);
+}
+
+.cx-home-room-title {
+  margin-top: 8px;
+  overflow: hidden;
+  font-size: 14.5px;
+  color: var(--t1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-home-room-artist {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--t5);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-home-quiets {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 420px;
+  padding-left: 28px;
+  border-left: 1px solid rgb(255 255 255 / 7%);
+}
+
+.cx-home-quiets[data-alone] {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* A house with nothing on: the rooms stand side by side across the page, as the sources do on Music. */
+@media (min-width: 980px) {
+  .cx-home-quiets[data-alone] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    max-width: none;
+    /* Every cell carries the same inset and a rule on its right; the strip is hung one inset to the
+       left and cut back to the margin, so the first name of every row stands on the page's edge. */
+    margin: 0 -1px 0 -22px;
+    clip-path: inset(0 0 0 22px);
+    border-top: 1px solid rgb(255 255 255 / 7%);
+  }
+
+  .cx-home-quiets[data-alone] > .cx-home-quiet {
+    height: 64px;
+    padding: 0 22px;
+    border-right: 1px solid rgb(255 255 255 / 7%);
+  }
+
+  .cx-home-quiets[data-alone] > .cx-home-lbl {
+    grid-column: 1 / -1;
+    padding-left: 22px;
+  }
+}
+
+.cx-home-quiets > .cx-home-lbl {
+  margin-top: 20px;
+  line-height: 1.8;
+}
+
+.cx-home-quiet {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  height: 46px;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  font-size: 14px;
+  color: var(--t3);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+.cx-home-quiet:hover,
+.cx-home-quiet[data-current] {
+  color: var(--t1);
+}
+
+.cx-home-quiet[data-off] {
+  color: var(--t6);
+}
+
+.cx-home-quiet[data-over] {
+  border-bottom-color: var(--t1);
+}
+
+.cx-home-quiet i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t8);
+}
+
+.cx-home-quiet em {
+  margin-left: 10px;
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--t6);
+}
+
+.cx-root .cx-home-quiet-vol {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--t5);
+}
+
+.cx-home-scenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cx-home-scene {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 18px;
+  font-size: 13px;
+  color: var(--t2);
+  transition: border-color 0.18s;
+}
+
+.cx-home-scene:hover {
+  border-color: rgb(255 255 255 / 30%);
+}
+
+.cx-home-scene em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--t6);
+}
+
+.cx-home-row {
+  --tile: clamp(128px, 12.4vw, 190px);
+  display: flex;
+  gap: clamp(20px, 1.8vw, 28px);
+  margin: 0 calc(var(--pane-pad) * -1);
+  padding: 0 var(--pane-pad) 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 96px), transparent 100%);
+}
+
+.cx-home-row::-webkit-scrollbar {
+  display: none;
+}
+
+.cx-home-tile {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 3px;
+  width: var(--tile);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-home-tile-cov {
+  position: relative;
+  display: block;
+  width: var(--tile);
+  height: var(--tile);
+  margin-bottom: 11px;
+  border-radius: 3px;
+  background-color: var(--cx-cover);
+  background-position: center;
+  background-size: cover;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 8%),
+    0 20px 36px -22px #000;
+  transition: transform 0.3s var(--cx-ease);
+}
+
+.cx-home-tile:hover .cx-home-tile-cov {
+  transform: translateY(-3px);
+}
+
+.cx-home-tile-title {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--t2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-home-tile-sub {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--t6);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- the rooms: a list, ruled ------------------------------------------------------- */
+
+.cx-root[data-shell] .cx-deskpage {
+  padding: 44px var(--pane-pad) 0;
+}
+
+/* --- the meters — see `VuPair` ---------------------------------------------------- */
+
+.cx-vu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.cx-vu-face {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-display);
+  filter: drop-shadow(0 30px 34px rgb(0 0 0 / 70%));
+}
+
+.cx-vu-lamp-dot {
+  fill: #5b2a22;
+  transition: fill 0.12s;
+}
+
+.cx-vu-lamp-glow {
+  fill: #ff4b3a;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.cx-vu-lamp[data-lit] .cx-vu-lamp-dot {
+  fill: #ff4b3a;
+}
+
+.cx-vu-lamp[data-lit] .cx-vu-lamp-glow {
+  opacity: 0.28;
+}
+
+.cx-vu-num {
+  font-family: var(--font-mono);
+}
+
+/* A row's name is set at a reading weight; the playing one is the white one. */
+.cx-root .cx-ttitle,
+.cx-root .cx-upnext-title {
+  font-weight: 450;
+}
+
+/* The whisper, after six still seconds: the words step back, but stay words. */
+.cx-root[data-shell][data-still] .cx-stage .cx-eyebrow,
+.cx-root[data-shell][data-still] .cx-stage .cx-stage-foot,
+.cx-root[data-shell][data-still] .cx-stage .cx-fav {
+  opacity: 0.55;
+}
+
+/* --- what is on the line: a lamp, a figure, the door to the reading ---------------------- */
+
+.cx-root .cx-wire {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 28px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--t3);
+}
+
+.cx-root .cx-wire b {
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--t4);
+}
+
+.cx-root .cx-wire svg {
+  color: var(--t7);
+  transition: color 0.18s, translate 0.18s;
+}
+
+.cx-root .cx-wire:hover svg,
+.cx-root .cx-wire:focus-visible svg {
+  color: var(--t1);
+  translate: 2px 0;
+}
+
+/* Grey for a fact, green for the one verdict. */
+.cx-wire-lamp {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t7);
+}
+
+.cx-wire[data-ok] .cx-wire-lamp {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* --- the phone's player — see `MobileStage` ---------------------------------------------- */
+
+.cx-player-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #09090a;
+  animation: cx-player-up 0.44s var(--cx-ease);
+}
+
+@keyframes cx-player-up {
+  from {
+    translate: 0 100%;
+  }
+}
+
+.cx-np {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: max(10px, env(safe-area-inset-top)) 28px max(20px, env(safe-area-inset-bottom));
+}
+
+/* The head: down, the room, what follows. Three 44px reaches on one line. */
+.cx-np-top {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  flex: none;
+  align-items: center;
+  height: 44px;
+  margin: 0 -12px;
+}
+
+.cx-np-close,
+.cx-np-queue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  color: var(--t4);
+}
+
+.cx-np-queue {
+  grid-column: 3;
+}
+
+.cx-np-queue b {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--t5);
+}
+
+.cx-np-room {
+  display: inline-flex;
+  grid-column: 2;
+  align-items: center;
+  justify-self: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--t2);
+}
+
+.cx-np-room i {
+  font-style: normal;
+  color: var(--t5);
+}
+
+/* The sleeve takes every spare pixel and is the first thing to give them back. */
+.cx-np-art {
+  container-type: size;
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  min-height: 96px;
+  margin-top: 14px;
+}
+
+.cx-np-cover {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--cx-cover);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 6%),
+    0 34px 60px -34px #000;
+  touch-action: none;
+  transition:
+    translate 0.36s var(--cx-ease),
+    scale 0.2s var(--cx-ease);
+}
+
+.cx-np-cover[data-dragging] {
+  transition: scale 0.2s var(--cx-ease);
+}
+
+.cx-np-cover-art {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.cx-np-cover-empty {
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 1px var(--hair);
+  background: none;
+}
+
+.cx-np-cover-empty .cx-cover-empty-mark {
+  width: 30%;
+  opacity: 0.16;
+}
+
+.cx-np-meta {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding-top: 30px;
+}
+
+/* The label: the name measured into one fixed box, so nothing under it moves from track to track. */
+.cx-np-titles {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-np-titlebox {
+  display: block;
+  height: 44px;
+}
+
+.cx-root .cx-np-title {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  font-size: 36px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.16;
+  color: var(--t1);
+}
+
+.cx-np-tags {
+  margin-top: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+.cx-np-artist,
+.cx-np-album {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A name that is a door is a thumb tall; the margin gives back what that takes. */
+.cx-np-artist {
+  min-height: 44px;
+  margin-block: -1px -5px;
+  font-size: 17px;
+  color: var(--t3);
+}
+
+.cx-np-album {
+  min-height: 44px;
+  margin-block: -9px;
+  font-size: 13px;
+  color: var(--t5);
+}
+
+/* The label that is leaving: a still of the whole block, on top of the one arriving. */
+.cx-np-ghost {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.cx-np-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-top: 8px;
+}
+
+.cx-np-line .cx-wire {
+  min-height: 44px;
+}
+
+.cx-np-line .cx-fav {
+  width: 44px;
+  height: 44px;
+  margin-right: -13px;
+}
+
+/* The clock: a hairline between its two figures. */
+.cx-np-prog {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--t5);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-np-prog .cx-bar {
+  flex: 1;
+  height: 32px;
+}
+
+.cx-np-prog .cx-bar-rail {
+  height: 1px;
+  background: rgb(255 255 255 / 14%);
+}
+
+.cx-np-prog .cx-bar-knob {
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  box-shadow: none;
+}
+
+.cx-np .cx-live {
+  min-height: 32px;
+  margin-top: 10px;
+}
+
+.cx-np .cx-transport {
+  justify-content: space-between;
+  margin: 14px -8px 0;
+}
+
+.cx-np .cx-transport .cx-tr-play {
+  width: 68px;
+  height: 68px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+}
+
+.cx-np .cx-cta {
+  margin-top: 18px;
+}
+
+/* The fader along the foot: a line, a point, a figure. */
+.cx-np-vol {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 44px;
+  margin-top: 22px;
+  color: var(--t5);
+}
+
+.cx-np-vol .cx-vol-slider {
+  flex: 1;
+}
+
+.cx-np-vol-num {
+  min-width: 22px;
+  font-size: 12px;
+  text-align: right;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A short window: the sleeve has already given what it can, so the rows close up. */
+@media (max-height: 700px) {
+  .cx-np-meta {
+    padding-top: 16px;
+  }
+
+  .cx-np-album {
+    display: none;
+  }
+
+  .cx-np .cx-transport {
+    margin-top: 4px;
+  }
+
+  .cx-np .cx-transport .cx-tr-play {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cx-np-vol {
+    margin-top: 6px;
+  }
+}
+
+/* Where a row came from, when a page mixes services: two capitals, not a colour. */
+.cx-svc {
+  font-size: 8.5px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--t6);
+}
+
+.cx-tile-svc {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 5px 3px 6px;
+  border-radius: 2px;
+  background: rgb(9 9 10 / 72%);
+  color: var(--t2);
+}
+
+.cx-trow-svc {
+  margin-left: 10px;
+  vertical-align: 1px;
+}
+
+/* --- a station has no running order; it has the dial ------------------------------------- */
+
+.cx-onradio {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-onradio-doors {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+.cx-onradio-door {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hair);
+  font-size: 14px;
+  text-align: left;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-onradio-door svg {
+  flex: none;
+  color: var(--t7);
+  transition: color 0.18s, translate 0.18s;
+}
+
+.cx-onradio-door:hover,
+.cx-onradio-door:focus-visible {
+  color: var(--t1);
+}
+
+.cx-onradio-door:hover svg,
+.cx-onradio-door:focus-visible svg {
+  color: var(--t1);
+  translate: 2px 0;
+}
+
+.cx-onradio-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-onradio-kept {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cx-onradio-chip {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  font-size: 12.5px;
+  color: var(--t3);
+  transition: border-color 0.18s, color 0.18s;
+}
+
+.cx-onradio-chip:hover,
+.cx-onradio-chip:focus-visible {
+  border-color: rgb(255 255 255 / 40%);
+  color: var(--t1);
+}
+
+/* A record with no picture is a white label: a plain sleeve, a rule, the name typed on it. */
+.cx-crate-label {
+  position: absolute;
+  inset: auto 14% 14%;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 16%);
+  overflow: hidden;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  line-height: 1.6;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--t5);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* --- the phone's three bars: the head, what is playing, the tabs -------------------------- */
+
+/* The head holds the notch's inset, so nothing on any screen runs under the status bar. */
+.cx-mhead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(env(safe-area-inset-top) + 8px) 22px 0;
+}
+
+.cx-brand {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  color: var(--accent);
+}
+
+.cx-brand-mark {
+  width: 26px;
+  height: auto;
+}
+
+/* Which room the controls are for, and the way to the others. */
+.cx-root .cx-room-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+
+.cx-root .cx-room-btn svg {
+  color: var(--t5);
+}
+
+/* Pinned to the viewport, not stacked at the end of a column: the window's own bottom edge is the
+   only one an installed app can trust. The column pads itself to clear them. */
+.cx-bnav,
+.cx-mini {
+  position: fixed;
+  right: 0;
+  left: 0;
+  background: #09090a;
+}
+
+.cx-bnav {
+  bottom: 0;
+  z-index: 55;
+  display: flex;
+  height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--hair);
+}
+
+.cx-bnav-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--t6);
+  transition: color 0.2s;
+}
+
+.cx-bnav-tab span {
+  font-size: 8.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.cx-bnav-tab[data-on] {
+  color: var(--t1);
+}
+
+/* What is playing: the position as the strip's own top edge, the sleeve, the name, a ring. */
+.cx-mini {
+  bottom: var(--nav-h);
+  z-index: 54;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--mini-h);
+  padding: 0 14px 0 22px;
+  border-top: 1px solid var(--hair);
+}
+
+.cx-mini-prog {
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+}
+
+.cx-mini-prog i {
+  display: block;
+  height: 100%;
+  background: var(--t2);
+  transition: width 0.92s linear;
+}
+
+.cx-mini-track {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  height: 100%;
+  text-align: left;
+}
+
+.cx-mini-cov {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--cx-cover);
+}
+
+.cx-mini-cov-art {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+}
+
+.cx-mini-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cx-mini-titlebox {
+  position: relative;
+  display: block;
+}
+
+.cx-mini-title,
+.cx-mini-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-mini-title {
+  font-size: 14px;
+  font-weight: 450;
+  color: var(--t1);
+}
+
+.cx-mini-title.cx-out {
+  position: absolute;
+  inset: 0;
+}
+
+.cx-mini-sub {
+  font-size: 12px;
+  color: var(--t5);
+}
+
+.cx-mini-play {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--t1);
+}
+
+.cx-mini-play svg {
+  box-sizing: content-box;
+  padding: 10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 55%);
+}
+
+.cx-root:has(.cx-mini) .cx-body {
+  padding-bottom: calc(var(--nav-h) + var(--mini-h));
+}
+
+/* The reading is an instrument: no tabs under it. */
+.cx-root[data-view='signal'] .cx-bnav {
+  display: none;
+}
+
+/* At rest the chrome leaves. */
+.cx-root[data-idle] .cx-mhead,
+.cx-root[data-idle] .cx-bnav,
+.cx-root[data-idle] .cx-mini {
+  display: none;
+}
+
+/* --- home, where the app opens — see `Welcome` ------------------------------------------- */
+
+.cx-welcome {
+  --pad: 22px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 14px var(--pad) 40px;
+}
+
+.cx-root[data-shell] .cx-welcome {
+  --pad: var(--pane-pad);
+  max-width: none;
+  padding-top: clamp(40px, 9vh, 96px);
+}
+
+.cx-welcome-date {
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--t6);
+}
+
+.cx-root .cx-welcome-greet {
+  margin-top: 12px;
+  font-size: clamp(30px, 4.2vw, 52px);
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--t1);
+}
+
+/* The house: a ruled list, one room to a line. */
+.cx-hrooms {
+  display: flex;
+  flex-direction: column;
+  max-width: 640px;
+  margin-top: -16px;
+}
+
+.cx-hroom {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 76px;
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+  color: var(--t3);
+}
+
+.cx-hroom[data-quiet] {
+  min-height: 52px;
+}
+
+.cx-hroom-cov {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 2px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 6%);
+}
+
+.cx-hroom[data-quiet] .cx-hroom-cov {
+  height: 20px;
+  box-shadow: none;
+}
+
+.cx-hroom-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cx-hroom[data-quiet] .cx-hroom-txt {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cx-hroom-name {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t4);
+}
+
+.cx-hroom[data-current] .cx-hroom-name {
+  color: var(--t1);
+}
+
+.cx-hroom-track {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t2);
+}
+
+.cx-hroom[data-quiet] .cx-hroom-track {
+  font-size: 12px;
+  color: var(--t6);
+}
+
+/* How far along the room is, drawn on the rule under it. */
+.cx-hroom-prog {
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 1px;
+}
+
+.cx-hroom-prog i {
+  display: block;
+  height: 100%;
+  background: var(--t3);
+  transition: width 0.92s linear;
+}
+
+/* The ways in, as words in a line. */
+.cx-welcome-shortcuts {
+  display: flex;
+  gap: 8px;
+  margin: 22px calc(var(--pad) * -1) 0;
+  padding: 0 var(--pad);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cx-welcome-shortcuts button {
+  flex: none;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--hair);
+  border-radius: 22px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--t3);
+  transition: border-color 0.18s, color 0.18s;
+}
+
+.cx-welcome-shortcuts button:hover,
+.cx-welcome-shortcuts button:focus-visible {
+  border-color: rgb(255 255 255 / 40%);
+  color: var(--t1);
+}
+
+/* A shelf runs past the page's edge, so the window visibly cuts it: keep going. */
+.cx-pick {
+  display: flex;
+  gap: 14px;
+  margin: 0 calc(var(--pad) * -1);
+  padding: 0 var(--pad) 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cx-pick-item {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 10px;
+  width: clamp(124px, 12vw, 164px);
+  text-align: left;
+}
+
+.cx-pick-cov {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--cx-cover) center / cover;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 6%);
+  transition: box-shadow 0.2s;
+}
+
+.cx-pick-item:hover .cx-pick-cov,
+.cx-pick-item:focus-visible .cx-pick-cov {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 34%);
+}
+
+.cx-pick-title {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t3);
+}
+
+/* --- the rooms: a ruled list, one room to a line — see `Channels` ------------------------- */
+
+.cx-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+.cx-desk-row,
+.cx-desk-group-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.cx-desk-row {
+  border-top: 1px solid var(--hair);
+}
+
+/* A room: its sleeve and name, a line with a point on it, one word. */
+.cx-desk-strip {
+  display: grid;
+  grid-template-columns: 340px minmax(120px, 1fr) 96px;
+  grid-template-areas: 'hit fader foot';
+  align-items: center;
+  min-height: 76px;
+  border-bottom: 1px solid var(--hair);
+  transition: background 0.2s;
+}
+
+.cx-desk-strip[data-over] {
+  background: rgb(255 255 255 / 4%);
+}
+
+/* The sleeve and the name are the handle: press to stand in the room, pull to move it. */
+.cx-desk-hit {
+  display: flex;
+  grid-area: hit;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  height: 100%;
+  text-align: left;
+  cursor: grab;
+}
+
+.cx-desk-cov {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 3px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 6%);
+  color: var(--t7);
+  transition: box-shadow 0.2s;
+}
+
+.cx-desk-cov[data-empty] {
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+/* While a room is in the hand, the others show where it can land. */
+.cx-desk-strip[data-hot] .cx-desk-cov {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 34%);
+}
+
+.cx-desk-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-root .cx-desk-name {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--t3);
+}
+
+.cx-root .cx-desk-strip[data-on] .cx-desk-name,
+.cx-root .cx-desk-strip[data-current] .cx-desk-name {
+  color: var(--t1);
+}
+
+.cx-desk-line {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t5);
+}
+
+/* The fader: the speaker, the line, the figure. */
+.cx-desk-fader {
+  display: flex;
+  grid-area: fader;
+  align-items: center;
+  gap: 14px;
+  margin: 0 28px;
+  color: var(--t6);
+}
+
+.cx-desk-fader[data-muted] {
+  opacity: 0.45;
+}
+
+.cx-desk-fader-rail {
+  position: relative;
+  flex: 1;
+  order: 1;
+  height: 44px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cx-desk-fader-rail::before,
+.cx-desk-fader-fill {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 1px;
+}
+
+.cx-desk-fader-rail::before {
+  right: 0;
+  background: rgb(255 255 255 / 14%);
+}
+
+.cx-desk-fader-fill {
+  width: var(--pct);
+  background: var(--t2);
+}
+
+.cx-desk-fader-knob {
+  position: absolute;
+  top: 50%;
+  left: var(--pct);
+  width: 9px;
+  height: 9px;
+  margin: -4px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--t1);
+  transition: scale 0.15s var(--cx-ease);
+}
+
+.cx-desk-fader[data-active] .cx-desk-fader-knob {
+  scale: 1.35;
+}
+
+.cx-desk-fader-val {
+  order: 2;
+  min-width: 24px;
+  font-size: 12px;
+  text-align: right;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-desk-foot {
+  display: flex;
+  grid-area: foot;
+  justify-content: flex-end;
+}
+
+.cx-root .cx-desk-word {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--t4);
+  transition: color 0.18s;
+}
+
+.cx-root button.cx-desk-word:hover,
+.cx-root button.cx-desk-word:focus-visible {
+  color: var(--t1);
+}
+
+.cx-root .cx-desk-word[data-quiet] {
+  color: var(--t7);
+}
+
+/* A group: its rooms held by one line down the left, and a master under them. */
+.cx-desk-group {
+  position: relative;
+  padding-left: 26px;
+}
+
+.cx-desk-group::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 1px;
+  background: var(--t1);
+}
+
+.cx-desk-group-lbl {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 44px;
+  border-bottom: 1px solid var(--hair);
+  font-size: 9.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+
+.cx-desk-group-lbl i {
+  font-style: normal;
+  color: var(--t6);
+}
+
+.cx-desk-master {
+  grid-template-columns: 60px 280px minmax(120px, 1fr) 96px;
+  grid-template-areas: 'ring txt fader foot';
+}
+
+.cx-desk-master .cx-desk-txt {
+  grid-area: txt;
+}
+
+.cx-desk-ring {
+  display: grid;
+  grid-area: ring;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 55%);
+  color: var(--t1);
+}
+
+.cx-desk-ring svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cx-desk-hint {
+  margin-top: 16px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t7);
+}
+
+.cx-root .cx-desk-toggle {
+  color: var(--t4);
+}
+
+.cx-root .cx-desk-toggle:hover,
+.cx-root .cx-desk-toggle:focus-visible {
+  color: var(--t1);
+}
+
+/* A scene: a moment the house was in, kept as a line. */
+.cx-desk-scenes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0 40px;
+  margin-top: 6px;
+}
+
+.cx-desk-scene {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-desk-scene-hit {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  text-align: left;
+}
+
+.cx-desk-scene-art {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 2px;
+  background-position: center;
+  background-size: cover;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 6%);
+  color: var(--t7);
+}
+
+.cx-desk-scene-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-desk-scene-name {
+  overflow: hidden;
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--t2);
+}
+
+.cx-desk-scene-sub {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t5);
+}
+
+/* In the hand: the name and the word on one line, the fader on the next. */
+.cx-desk[data-phone] .cx-desk-strip {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'hit foot'
+    'fader fader';
+  padding-top: 10px;
+}
+
+.cx-desk[data-phone] .cx-desk-hit {
+  height: 48px;
+}
+
+.cx-desk[data-phone] .cx-desk-fader {
+  margin: 0;
+}
+
+.cx-desk[data-phone] .cx-desk-master {
+  grid-template-columns: 60px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'ring txt foot'
+    'fader fader fader';
+}
+
+.cx-desk[data-phone] .cx-desk-group {
+  padding-left: 16px;
+}
+
+/* --- the reading — see `Signal` ---------------------------------------------------------- */
+
+.cx-sig {
+  /* The instruments' ink is silver here; green is the verdict's alone. */
+  --accent: #d4d6da;
+  --accent-soft: rgb(212 214 218 / 8%);
+  --accent-line: rgb(212 214 218 / 30%);
+
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 var(--pane-pad, 22px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.cx-sig-lbl {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+/* The verdict and, beside it, why. */
+.cx-sig-head {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  column-gap: 44px;
+  align-items: end;
+  padding: 40px 0 26px;
+}
+
+.cx-sig-head .cx-sig-lbl {
+  grid-column: 1 / -1;
+  margin-bottom: 14px;
+}
+
+.cx-sig-head .signal-verdict {
+  display: contents;
+}
+
+.cx-sig-head .signal-verdict::before {
+  content: none;
+}
+
+.cx-sig-head .signal-verdict-head {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 3.6vw, 52px);
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--t1);
+}
+
+/* The lamp: green for untouched, white for clean, amber for altered, dark for nothing. */
+.cx-sig-head .signal-verdict-head::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--t7);
+}
+
+.cx-sig-head .signal-verdict[data-tone='perfect'] .signal-verdict-head::before {
+  background: var(--ok);
+  box-shadow: 0 0 12px var(--ok);
+}
+
+.cx-sig-head .signal-verdict[data-tone='clean'] .signal-verdict-head::before {
+  background: var(--t1);
+  box-shadow: 0 0 10px rgb(255 255 255 / 50%);
+}
+
+.cx-sig-head .signal-verdict[data-tone='altered'] .signal-verdict-head::before {
+  background: #e0a03c;
+  box-shadow: 0 0 10px rgb(224 160 60 / 55%);
+}
+
+.cx-sig-head .signal-verdict-note {
+  grid-column: 2;
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--t4);
+}
+
+.cx-sig-head .signal-verdict-note::first-letter {
+  text-transform: uppercase;
+}
+
+/* The instruments on the left, the path down the right. */
+.cx-sig-main {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  column-gap: 44px;
+}
+
+.cx-sig-bench {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.cx-sig-panel {
+  padding: 18px 24px 14px;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #131316, #0e0e10);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 4%),
+    0 30px 60px -40px #000;
+}
+
+.cx-sig-panel .analysis-panel {
+  padding: 0;
+}
+
+/* Four figures, set at the size of what they are: the record, in numbers. */
+.cx-sig-figs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  padding: 8px 0 4px;
+}
+
+.cx-sig-fig {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 8px 7px;
+}
+
+.cx-sig-fig span {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+.cx-sig-fig b {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-sig-fig i {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--t5);
+}
+
+.cx-sig-fig[data-tone='bad'] b {
+  color: #e5644e;
+}
+
+/* The path: a line down the page with a point for every stage. */
+.cx-sig-path {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-left: 32px;
+  border-left: 1px solid var(--hair);
+}
+
+.cx-sig-chain {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cx-sig-chain li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr);
+  column-gap: 18px;
+  padding-bottom: 18px;
+}
+
+.cx-sig-chain li:last-child {
+  padding-bottom: 0;
+}
+
+/* The wire between one point and the next. */
+.cx-sig-chain li:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: -5px;
+  left: 3px;
+  width: 1px;
+  background: rgb(255 255 255 / 14%);
+}
+
+.cx-sig-chain[data-ok] li:not(:last-child)::before {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.cx-sig-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--t8);
+}
+
+.cx-sig-chain li[data-state='idle'] .cx-sig-dot {
+  background: #09090a;
+  box-shadow: inset 0 0 0 1px var(--t5);
+}
+
+.cx-sig-chain li[data-state='on'] .cx-sig-dot {
+  background: var(--t1);
+}
+
+.cx-sig-chain[data-ok] li[data-state='on'] .cx-sig-dot {
+  background: var(--ok);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 70%, transparent);
+}
+
+.cx-sig-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-sig-step-name {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+.cx-sig-step-value {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--t2);
+  animation: cx-sig-land 0.6s var(--cx-ease);
+}
+
+.cx-sig-chain li[data-state='off'] .cx-sig-step-value,
+.cx-sig-chain li[data-state='idle'] .cx-sig-step-value {
+  color: var(--t5);
+}
+
+.cx-root .cx-sig-step-detail {
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--t5);
+}
+
+@keyframes cx-sig-land {
+  from {
+    opacity: 0;
+    translate: 6px 0;
+  }
+}
+
+/* The bench, under the fold: tiles between hairlines, no boxes. */
+.cx-sig-deck {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0 44px;
+  margin-top: 40px;
+  border-top: 1px solid var(--hair);
+}
+
+.cx-sig-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  grid-column: span 3;
+  min-width: 0;
+  padding: 22px 0 26px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-sig-tile[data-span='6'] {
+  grid-column: span 6;
+}
+
+.cx-sig-tile-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--t5);
+}
+
+.cx-sig-tile-label i {
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--t6);
+}
+
+.cx-sig-tile .signal-timing,
+.cx-sig-tile .signal-wire {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* The clock names itself; its name is set like every other tile's. */
+.cx-sig-tile .signal-timing-head {
+  margin-bottom: 14px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  color: var(--t5);
+}
+
+/* The peak meter: two columns standing in the tile. */
+.cx-sig-tile .cx-meter {
+  flex: none;
+  height: 150px;
+}
+
+/* A drawn instrument, and the ink it draws with: silver, read once from here. */
+.cx-sig-figure {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 150px;
+  color: #d4d6da;
+}
+
+.cx-sig-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: #0c0c0e;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
+}
+
+/* The goniometer is a figure, not a field: it stays square in whatever it is given. */
+.cx-sig-figure:not([data-wide]) .cx-sig-canvas {
+  aspect-ratio: 1;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* The cage sits over the light and carries nothing of its own. */
+.cx-sig-canvas[data-layer='grid'] {
+  position: absolute;
+  inset: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.cx-sig-figure:not([data-wide]) .cx-sig-canvas[data-layer='grid'] {
+  right: 0;
+  left: 0;
+}
+
+.cx-sig-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-sig-headline i {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--t5);
+}
+
+.cx-sig-headline[data-tone='bad'] {
+  color: #e5644e;
+}
+
+.cx-sig-foot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cx-sig-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.cx-sig-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cx-sig-stat span {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t6);
+}
+
+.cx-sig-stat em {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 300;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-sig-stat[data-lead] em {
+  color: var(--t1);
+}
+
+.cx-sig-stat em i,
+.cx-sig-unit {
+  margin-left: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  color: var(--t6);
+}
+
+.cx-sig-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.cx-sig-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  border-top: 1px solid var(--hair);
+  font-size: 12.5px;
+  color: var(--t4);
+}
+
+.cx-sig-row > em {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-style: normal;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-sig-row [data-tone='bad'] {
+  color: #e5644e;
+}
+
+/* In the hand: the way back, the record, the transport — the frame a phone does not have. */
+.cx-sig-band {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  margin: 0 -22px;
+  padding: 0 22px 6px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-sig-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--t4);
+}
+
+.cx-sig-now {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cx-sig-cover {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--cx-cover) center / cover;
+}
+
+.cx-sig-id {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cx-sig-title,
+.cx-sig-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-sig-title {
+  font-size: 15px;
+  font-weight: 450;
+  color: var(--t1);
+}
+
+.cx-sig-sub {
+  font-size: 12px;
+  color: var(--t5);
+}
+
+.cx-sig-band .cx-transport {
+  flex: none;
+  gap: 4px;
+  margin: 0;
+}
+
+.cx-sig-band .cx-tr-side {
+  display: none;
+}
+
+/* Every control in the hand is a thumb wide. */
+.cx-sig-band .cx-transport .cx-tr-skip,
+.cx-sig-band .cx-transport .cx-tr-play {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+
+.cx-sig-band .cx-time-tot {
+  min-height: 44px;
+  margin-block: -12px;
+}
+
+.cx-sig-band .cx-bar-wrap {
+  max-width: none;
+  margin-top: 6px;
+}
+
+/* A narrow window: the path goes under the instruments, the bench in one column. */
+@media (max-width: 1180px) {
+  .cx-sig-main {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 34px;
+  }
+
+  .cx-sig-path {
+    padding: 26px 0 0;
+    border-top: 1px solid var(--hair);
+    border-left: 0;
+  }
+
+  .cx-sig-deck {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 979px) {
+  .cx-sig-head {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 26px 0 22px;
+  }
+
+  .cx-sig-head .signal-verdict-note {
+    grid-column: 1;
+    margin-top: 12px;
+  }
+
+  .cx-sig-figs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 20px;
+  }
+
+  .cx-sig-panel {
+    padding: 14px 14px 10px;
+  }
+
+  .cx-sig .analysis-eq-toggle {
+    justify-content: flex-end;
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -12px;
+  }
+
+  .cx-sig-deck {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cx-sig-tile,
+  .cx-sig-tile[data-span='6'] {
+    grid-column: 1 / -1;
+  }
+
+}
+
+/* In the hand the one filled button is a thumb tall in its own right, not by a reach around it. */
+@media (max-width: 979px) {
+  .cx-root .cx-play-btn,
+  .cx-root .cx-wire {
+    min-height: 44px;
+  }
+
+  /* The artist under a record's name is a door, and a thumb tall. */
+  /* Words that are buttons: a line of type, a thumb tall, with the margin giving back the difference. */
+  .cx-root .cx-tnote,
+  .cx-root .cx-qmain {
+    min-height: 44px;
+  }
+
+  .cx-root .cx-qsec-act,
+  .cx-root .cx-sheet .cx-time-tot,
+  .cx-root .cx-about-foot button {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -15px;
+  }
+
+  .cx-root button.cx-detail-sub {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-block: -4px -10px;
+  }
+}
+
+/* --- the front of the catalogue: a selector, one record, the shelves ---------------------- */
+
+/* The question, on a line. */
+.cx-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  width: min(340px, 100%);
+  height: 40px;
+  border-bottom: 1px solid rgb(255 255 255 / 14%);
+  color: var(--t5);
+  transition: border-color 0.2s;
+}
+
+.cx-search:has(input:not(:placeholder-shown)) {
+  border-color: var(--t3);
+}
+
+/* The field you are typing in says so with its own rule, not with a ring round the input. */
+.cx-search:focus-within {
+  border-color: var(--t1);
+  color: var(--t2);
+}
+
+.cx-root .cx-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--t1);
+}
+
+.cx-search input::placeholder {
+  color: var(--t5);
+}
+
+.cx-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.cx-root .cx-search-key {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--t7);
+}
+
+/* The selector: the sources in a ruled strip, a lamp on the one that is on. */
+.cx-hall {
+  display: flex;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-source {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  min-width: 150px;
+  min-height: 88px;
+  padding: 0 22px;
+  text-align: left;
+  animation: cx-door-in 0.5s var(--cx-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
+.cx-source:first-child {
+  padding-left: 0;
+}
+
+.cx-source + .cx-source {
+  border-left: 1px solid var(--hair);
+}
+
+.cx-root .cx-source-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-source[data-on] .cx-source-name,
+.cx-source:hover .cx-source-name,
+.cx-source:focus-visible .cx-source-name {
+  color: var(--t1);
+}
+
+.cx-root .cx-source-fact {
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--t5);
+}
+
+/* One record offered: the sleeve and its name, nothing around them. */
+.cx-bill {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  column-gap: 44px;
+  align-items: center;
+  padding: 40px 0 38px;
+}
+
+.cx-bill-cover {
+  position: relative;
+  width: 232px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--cx-cover) center / cover;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 9%),
+    0 40px 70px -40px #000;
+}
+
+.cx-bill-cover[data-person] {
+  border-radius: 50%;
+}
+
+.cx-bill-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.cx-root .cx-bill-kicker {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  color: var(--t5);
+}
+
+.cx-bill-from {
+  font-style: normal;
+}
+
+.cx-bill-from::before {
+  content: '·';
+  margin-right: 12px;
+}
+
+.cx-root .cx-bill-title {
+  display: -webkit-box;
+  max-width: 100%;
+  margin-top: 16px;
+  overflow: hidden;
+  font-size: clamp(30px, 3.2vw, 44px);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  text-align: left;
+  color: var(--t1);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cx-bill-sub {
+  margin-top: 10px;
+  font-size: 19px;
+  color: var(--t3);
+}
+
+.cx-bill-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.cx-root .cx-bill-open {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 18px;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--t2);
+  transition: border-color 0.18s, color 0.18s;
+}
+
+.cx-root .cx-bill-open:hover,
+.cx-root .cx-bill-open:focus-visible {
+  border-color: rgb(255 255 255 / 45%);
+  color: var(--t1);
+}
+
+/* Inside a service the record offered heads the page, between two rules. */
+.cx-browse-inner:not([data-root]) .cx-bill {
+  margin-bottom: 30px;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+/* The shelves under it. */
+.cx-frontsec {
+  display: flex;
+  flex-direction: column;
+  padding-top: 22px;
+  border-top: 1px solid var(--hair);
+}
+
+.cx-frontsec + .cx-frontsec {
+  margin-top: 34px;
+}
+
+.cx-frontsec .cx-sec-head {
+  margin-bottom: 18px;
+}
+
+.cx-frontsec .cx-sec-rule {
+  display: none;
+}
+
+/* --- a search: the answer on the page, where to go next beside it ------------------------- */
+
+.cx-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  column-gap: 56px;
+  align-items: start;
+}
+
+.cx-results-main {
+  min-width: 0;
+}
+
+/* A shelf beside the people ends at its own column, and fades there as it does at the window's edge. */
+.cx-root .cx-results-main .cx-shelf-row {
+  margin-right: 0;
+  padding-right: 56px;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+}
+
+.cx-results-side {
+  display: flex;
+  flex-direction: column;
+  gap: 38px;
+  padding-left: 32px;
+  border-left: 1px solid var(--hair);
+}
+
+.cx-listsec {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cx-lrows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--hair);
+}
+
+.cx-lrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+  color: var(--t3);
+  transition: color 0.18s;
+}
+
+.cx-lrow-art {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--cx-cover) center / cover;
+}
+
+.cx-lrow-art[data-person] {
+  border-radius: 50%;
+  filter: grayscale(1);
+  transition: filter 0.25s;
+}
+
+.cx-lrow-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-lrow svg {
+  flex: none;
+  color: var(--t7);
+  transition: color 0.18s, translate 0.18s;
+}
+
+.cx-lrow:hover,
+.cx-lrow:focus-visible {
+  color: var(--t1);
+}
+
+.cx-lrow:hover .cx-lrow-art[data-person],
+.cx-lrow:focus-visible .cx-lrow-art[data-person] {
+  filter: none;
+}
+
+.cx-lrow:hover svg,
+.cx-lrow:focus-visible svg {
+  color: var(--t1);
+  translate: 2px 0;
+}
+
+/* A narrow window and the hand: one column, the selector one source to a line. */
+@media (max-width: 1180px) {
+  .cx-results {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 34px;
+  }
+
+  .cx-results-side {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .cx-search {
+    width: 100%;
+    height: 44px;
+  }
+
+  .cx-source {
+    flex: 1 1 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 56px;
+    padding: 0;
+  }
+
+  .cx-source + .cx-source {
+    border-top: 1px solid var(--hair);
+    border-left: 0;
+  }
+
+  .cx-bill {
+    grid-template-columns: 112px minmax(0, 1fr);
+    column-gap: 20px;
+    padding: 26px 0;
+  }
+
+  .cx-bill-cover {
+    width: 112px;
+  }
+
+  .cx-root .cx-bill-title {
+    margin-top: 10px;
+    font-size: 24px;
+  }
+
+  .cx-bill-sub {
+    margin-top: 6px;
+    font-size: 15px;
+  }
+
+  .cx-bill-actions {
+    margin-top: 6px;
+  }
+
+  /* In the hand the name and the word beside the button are a thumb tall. */
+  .cx-root .cx-bill-title {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 2px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .cx-root .cx-bill-open {
+    height: 44px;
+    border-radius: 22px;
+  }
+}
+
+/* --- the same frame on a wall panel: 1024 by 768, landscape ------------------------------- */
+
+/* The name is a nameplate of one of three sizes, but never wider than the column it stands in. */
+.cx-titlebox .cx-title {
+  font-size: min(var(--fs, 56px), calc((100vw - 232px) * 0.058));
+  /* Room under the line for a g and a y: a clamped box cuts whatever hangs below it. */
+  line-height: 1.12;
+  padding-bottom: 0.06em;
+}
+
+.cx-root .cx-bill-title,
+.cx-root .cx-detail-title {
+  padding-bottom: 0.08em;
+}
+
+.cx-root[data-idle] .cx-titlebox .cx-title {
+  font-size: min(var(--fs, 56px), 6vw);
+}
+
+@media (max-width: 1180px) {
+  .cx-pbar {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 340px) minmax(0, 1fr);
+  }
+
+  /* The room is named in the index beside the bar; here it gives its place to the fader. */
+  .cx-root .cx-pbar-room {
+    display: none;
+  }
+
+  .cx-pbar-vol .cx-vol-slider {
+    width: 72px;
+  }
+}
+
+/* Five or six sources in one row: the word under each name gives way before the row breaks. A phone
+   stacks them instead. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .cx-hall {
+    flex-wrap: nowrap;
+  }
+
+  .cx-source {
+    min-width: 0;
+    padding: 0 16px;
+  }
+
+  .cx-root .cx-source-name {
+    font-size: 17px;
+    white-space: nowrap;
+  }
+
+  .cx-root .cx-source-fact {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* A short window: the index closes up so its last line is still on the panel. */
+@media (max-height: 820px) {
+  .cx-side {
+    gap: 20px;
+    padding-top: 24px;
+    padding-bottom: 14px;
+  }
+
+  .cx-root .cx-snav {
+    height: 30px;
+  }
+}
+
+/* --- a tablet held upright: the hand's layout, as one column in the middle of the glass ----- */
+
+@media (min-width: 700px) and (max-width: 979px) {
+  .cx-welcome {
+    max-width: 680px;
+  }
+
+  .cx-hrooms {
+    max-width: none;
+  }
+
+  .cx-np {
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .cx-root:not([data-shell]) .cx-browse-inner {
+    max-width: 720px;
+    margin-inline: auto;
+  }
+
+  .cx-mhead {
+    padding-inline: max(22px, calc((100vw - 680px) / 2 + 22px));
+  }
+}
+
+/* --- figures: whatever is a number is set in the figure face, not the label's ------------- */
+
+.cx-root .cx-vol-num,
+.cx-root .cx-vol-bubble,
+.cx-root .cx-upnext-dur,
+.cx-root .cx-tdur,
+.cx-root .cx-tidx,
+.cx-root .cx-times,
+.cx-root .cx-time-tot,
+.cx-root .cx-pbar-tl,
+.cx-root .cx-np-vol-num,
+.cx-root .cx-np-prog,
+.cx-root .cx-np-queue,
+.cx-root .cx-qnum,
+.cx-root .cx-qdur,
+.cx-root .cx-qrun,
+.cx-root .cx-desk-fader-val,
+.cx-root .cx-home-quiet-vol,
+.cx-root .cx-snav-k,
+.cx-root .cx-align-value,
+.cx-root .cx-align-step,
+.cx-root .cx-meter-scale,
+.cx-root .cx-index-count,
+.cx-root .cx-browse-count,
+.cx-root .cx-sig-step-detail,
+.cx-root .cx-source-fact,
+.cx-root .cx-search-key,
+.cx-root .cx-tnote,
+.cx-root .analysis-geometry,
+.cx-root .cx-sig-fig i {
+  font-family: var(--font-mono);
+  font-size-adjust: none;
+  font-weight: 400;
+}

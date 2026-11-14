@@ -1,0 +1,327 @@
+/*
+ * The shell: the splash, and the frame the player hangs in.
+ *
+ * Kept out of `art.css` because it belongs to neither the player nor the instruments — it is what is
+ * drawn *over* them, and it outlives whatever they do. It held the transition between two players as
+ * well; one of them has absorbed the other, so what is left is the arrival and the corners.
+ *
+ * The tokens are read from `styles.css`, which is imported first and defines them on `:root`.
+ */
+
+/*
+ * The product is two surfaces, and moving between them is a navigation.
+ *
+ * The player is one bundle; the admin console is a different app at a different url, so going there is a
+ * real page load and no amount of DOM animation can cross it. `@view-transition`
+ * can: same-origin cross-document transitions let the browser snapshot the outgoing page, load the
+ * incoming one, and animate between the two — and `view-transition-name` makes named elements *fly*
+ * between their old and new positions even though they belong to different documents.
+ *
+ * Which is why the mark carries a name here and in the console's hero. Press the wordmark in a player and
+ * the mark travels from the corner to the middle of the console's splash; press it there and it travels
+ * back. One object, two surfaces, one continuous gesture — the same argument as the sleeve's flight
+ * between the stage and the deck, at the scale of the whole product.
+ *
+ * Browsers without it get an ordinary navigation, which is what they got before.
+ */
+@view-transition {
+  navigation: auto;
+}
+
+/* --- the app's own frame --------------------------------------------------- */
+
+.face {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/*
+ * Installed, the app is anchored to the viewport instead of measured against it.
+ *
+ * In a browser tab `dvh` is exactly right: the dynamic viewport shrinks and grows with the
+ * toolbars, so a bottom bar rides the toolbar's edge instead of hiding behind it. Installed on iOS
+ * with a translucent status bar there are no toolbars — the web view *is* the screen — and nothing
+ * that *reports* a height agrees about that. The page is drawn from y=0, so whatever they
+ * under-report piles up at the bottom: the tab bar floating a centimetre off the edge with a black
+ * band beneath it.
+ *
+ * Two attempts went out before this one, and both failed the same way, which is what makes the
+ * third different. `@media (display-mode: standalone) { height: 100vh }` changed nothing. Then
+ * `--app-h` from `window.innerHeight` changed nothing either — so `innerHeight` there is the same
+ * short number the units give, and every remaining variation on "ask how tall the window is" would
+ * be a fourth guess at the same wrong question.
+ *
+ * So stop asking. `position: fixed; inset: 0` resolves against the viewport itself rather than
+ * against anyone's opinion of its height, which is the whole point: the bar sits on the bottom
+ * edge because it *is* the bottom edge, and its own `env(safe-area-inset-bottom)` lifts the
+ * glyphs clear of the home indicator. Only when installed — in a browser this would be the layout
+ * viewport, which does not shrink with the toolbars, and the bar would hide behind them.
+ */
+html[data-standalone] .face {
+  position: fixed;
+  inset: 0;
+  height: auto;
+}
+
+/* --- splash ---------------------------------------------------------------- */
+
+/*
+ * Above everything, and it fades in two stages (see `Intro`): the contents first, then the black
+ * layer itself. That order is why the hand-off is invisible — the app is already rendered
+ * underneath by the time anything moves.
+ */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  /* A shade darker than the app: the splash is the outside of the product. */
+  background: #05060a;
+  transition: opacity 640ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.intro[data-out] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro[data-fading] .intro-mark,
+.intro[data-fading] .intro-word,
+.intro[data-fading] .intro-tag {
+  opacity: 0;
+  transition: opacity 520ms ease;
+}
+
+/*
+ * While the splash is up it is the mark that carries the name, because on a cross-document arrival the
+ * splash is what the incoming page is showing. `Root` moves the name to the bar's copy the moment the
+ * splash is gone — two elements holding one `view-transition-name` at the same time is how a browser
+ * decides to skip the whole transition.
+ */
+.intro[data-vt] .intro-mark {
+  view-transition-name: audioserver-mark;
+}
+
+/*
+ * The mark: bars breathing, roofline drawing itself.
+ *
+ * The roof is stroked with a dash the length of the path and an offset that animates to zero, which
+ * is the pure-CSS way to draw a line on. `stroke-dasharray: 96` is that length — it is not a round
+ * number chosen for looks, and changing the path means changing it or the stroke will appear
+ * pre-drawn or never finish.
+ */
+/*
+ * The rings, borrowed from the admin interface's splash.
+ *
+ * Two circles that expand out of the mark and fade, staggered — the same gesture that product uses when
+ * its hero lands, at the same accent. Timed to peak as the roofline lands rather than after it: this
+ * splash holds for 1600 ms (`INTRO_MIN_MS`) and then fades, so the admin's own delays fired them into
+ * the fade and neither ever completed. At 850/1030 ms they are brightest around 1050/1240 ms, with the
+ * roof finishing at 1330 ms — one gesture arriving, not two.
+ *
+ * `backwards` fill so they are invisible before their delay rather than sitting at full scale waiting,
+ * and sized as a share of the glyph so they scale with `min(168px, 40vw)` instead of being a fixed
+ * circle around a mark that is not always the same size.
+ */
+.intro-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.intro-glyph::before,
+.intro-glyph::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62%;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.2);
+  pointer-events: none;
+}
+
+.intro-glyph::before {
+  animation: intro-ring 950ms cubic-bezier(0.2, 0.8, 0.2, 1) 850ms backwards;
+}
+
+.intro-glyph::after {
+  animation: intro-ring 1050ms cubic-bezier(0.2, 0.8, 0.2, 1) 1030ms backwards;
+}
+
+@keyframes intro-ring {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+
+  20% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(4);
+  }
+}
+
+.intro-mark {
+  width: min(168px, 40vw);
+  height: auto;
+  opacity: 0;
+  /* The halo is the accent too, not a white bloom: a green mark inside a white glow reads as two
+     colours arguing about which one the product is. */
+  filter: drop-shadow(0 0 40px color-mix(in oklab, var(--accent) 30%, transparent));
+  animation: intro-mark-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) 320ms forwards;
+}
+
+.intro-mark rect {
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: intro-bar 1050ms ease-in-out infinite;
+}
+
+/*
+ * The roofline, in the accent.
+ *
+ * It was `--text` — white — which made the one drawn stroke in the whole splash the only part of the
+ * mark that was not the product's colour, sitting directly above ten green bars. The mark is one thing
+ * and now it is one colour.
+ */
+.intro-mark path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 96;
+  stroke-dashoffset: 96;
+  animation: intro-roof 850ms cubic-bezier(0.2, 0.8, 0.2, 1) 480ms forwards;
+}
+
+/* Negative delays so the bars start mid-cycle: they are already moving when they appear, which is
+   what makes it a level meter rather than a loading animation that begins. */
+.intro-mark rect:nth-child(1) { animation-delay: -0.2s; }
+.intro-mark rect:nth-child(2) { animation-delay: -0.55s; }
+.intro-mark rect:nth-child(3) { animation-delay: -0.4s; }
+.intro-mark rect:nth-child(4) { animation-delay: -0.32s; }
+.intro-mark rect:nth-child(5) { animation-delay: -0.25s; }
+.intro-mark rect:nth-child(6) { animation-delay: -0.48s; }
+.intro-mark rect:nth-child(7) { animation-delay: -0.12s; }
+.intro-mark rect:nth-child(8) { animation-delay: -0.6s; }
+.intro-mark rect:nth-child(9) { animation-delay: -0.36s; }
+.intro-mark rect:nth-child(10) { animation-delay: -0.5s; }
+
+@keyframes intro-bar {
+  0%,
+  100% {
+    transform: scaleY(0.38);
+  }
+  50% {
+    transform: scaleY(1.28);
+  }
+}
+
+@keyframes intro-roof {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes intro-mark-in {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.intro-word {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.34em;
+  font-size: clamp(26px, 5vw, 34px);
+  color: var(--text);
+  opacity: 0;
+  animation: intro-rise 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 1100ms forwards;
+}
+
+.intro-word-light {
+  font-size: 0.55em;
+  color: var(--text-mute);
+  letter-spacing: 0.22em;
+}
+
+.intro-tag {
+  margin-top: -8px;
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  opacity: 0;
+  animation: intro-rise 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 1320ms forwards;
+}
+
+@keyframes intro-rise {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+/*
+ * The bundle saying it is the wrong one for this server.
+ *
+ * Bottom centre, out of the way of both the artwork and the transport, and quiet: a guest standing
+ * in front of this screen cannot fix a version mismatch, so the line points at admin and otherwise
+ * asks for nothing. It is only ever on screen in a state the update gate already refuses to create
+ * — a rolled-back core, or a bundle waved through at build time.
+ */
+.server-mismatch {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 130;
+  max-width: min(92vw, 640px);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  pointer-events: auto;
+}
+
+.server-mismatch a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-mark,
+  .intro-mark rect,
+  .intro-mark path,
+  .intro-word,
+  .intro-tag {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+}

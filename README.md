@@ -12,9 +12,9 @@ It can run on its own or as a Loxone Audioserver.
 docker compose up -d
 ```
 
-Then open `http://<server-ip>:7090`, create your admin account, and walk the three steps: **Content**
-— add your music. **Access** — switch on how to reach it. **Zones** — only if you want rooms. The
-first two steps are already a working audio server.
+Then open `http://<server-ip>:7090`. **Player** is the client, **Admin** is the setup surface.
+Create the admin account and walk the three steps: **Content** — add your music. **Access** —
+switch on how to reach it. **Zones** — only if you want rooms.
 
 The HTTP gateway listens on port 7090. The public API is described in
 [INTEGRATING.md](INTEGRATING.md).
