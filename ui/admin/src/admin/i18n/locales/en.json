@@ -462,7 +462,7 @@
         "appName": "App name",
         "redirectUri": "Redirect URI",
         "enableApis": "Enable APIs",
-        "apisValue": "Web API · Web Playback SDK",
+        "apisValue": "Web API",
         "copy": "Copy"
       },
       "pasteLabel": "Paste your Client ID",

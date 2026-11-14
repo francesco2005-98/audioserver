@@ -4,6 +4,7 @@ import type { PlaybackSource } from '@/ports/EngineTypes';
 import type { CoverArtPayload, PlaybackMetadata } from '@/ports/types/playback';
 import type { PlayerRegistryPort } from '@/ports/PlayerRegistryPort';
 import type { MdnsBrowser, MdnsPort, MdnsRegistration } from '@/ports/MdnsPort';
+import { OWN_AIRPLAY_MODEL } from '@/domain/outputs/airplayIdentity';
 import { advertisableIpv4Addresses } from '@/shared/utils/net';
 import os from 'node:os';
 import http from 'node:http';
@@ -249,7 +250,7 @@ export class AirplayInstance {
       const receiver = new AirPlayReceiver(
         {
           name: this.zoneName,
-          model: this.config.model || 'AudioserverCoreAirplay',
+          model: this.config.model || OWN_AIRPLAY_MODEL,
           ...(this.hardwareAddress ? { mac: Buffer.from(this.hardwareAddress.replace(/[^0-9a-f]/gi, ''), 'hex') } : {}),
           port: portBase + offset,
           onRequest: (info) =>
