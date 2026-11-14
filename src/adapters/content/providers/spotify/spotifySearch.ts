@@ -51,16 +51,11 @@ export async function searchSpotifyAccount(
   const safeSearchLimit = Math.min(Math.max(maxLimit || 20, 1), SPOTIFY_SEARCH_MAX_LIMIT);
   url.searchParams.set('limit', String(safeSearchLimit));
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
-  });
-  if (!res.ok) {
+  const searched = await provider.authorizedRequest(url.toString());
+  if (!searched.ok || !searched.body || typeof searched.body !== 'object') {
     return { result: {}, user: provider.accountId, providerId: provider.providerId };
   }
-  const data = (await res.json()) as Record<string, any> | null;
+  const data = searched.body as Record<string, any>;
   const result: Record<string, ContentFolderItem[]> & { _totals?: Record<string, number> } = {};
   const totals: Record<string, number> = {};
   const providerPrefix = provider.providerId;

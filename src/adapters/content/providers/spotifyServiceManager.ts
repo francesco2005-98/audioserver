@@ -36,6 +36,37 @@ export interface SpotifyServiceDevice {
   providerId: string;
 }
 
+const SPOTIFY_ITEM_TYPES = 'track|album|artist|playlist|show|episode';
+
+/**
+ * The id inside a Spotify reference, whichever shape a client handed us:
+ * `spotify:playlist:…`, `spotify@account:playlist:…`, or `playlist:…`.
+ * An episode follows its show.
+ */
+export function parseSpotifyItemId(
+  itemId: string,
+): { type: 'track' | 'album' | 'artist' | 'playlist' | 'show'; id: string } | null {
+  let cleaned = itemId?.trim() ?? '';
+  if (!cleaned) return null;
+  try {
+    cleaned = decodeURIComponent(cleaned);
+  } catch {
+    /* already decoded */
+  }
+  cleaned = cleaned.replace(/\]+$/, '').replace(/\/+$/, '');
+  const match = cleaned.match(
+    new RegExp(`^(?:spotify(?::|@[^:]+:))?(${SPOTIFY_ITEM_TYPES}):([^:?#/]+)`, 'i'),
+  );
+  if (!match) return null;
+  const type = (match[1] ?? '').toLowerCase();
+  const id = match[2] ?? '';
+  if (!id) return null;
+  if (type === 'episode') {
+    return { type: 'show', id };
+  }
+  return { type: type as 'track' | 'album' | 'artist' | 'playlist' | 'show', id };
+}
+
 /**
  * Manages Spotify accounts and exposes simple helpers for folder/playlist lookups.
  */
@@ -357,26 +388,22 @@ export class SpotifyServiceManager {
       }
       return { isfollowed: false, isowner: false };
     }
-    const parsed = this.parseSpotifyId(itemId);
+    const parsed = parseSpotifyItemId(itemId);
     if (!parsed) {
-      return { isfollowed: false, isowner: false };
-    }
-    const token = await provider.fetchAccessToken();
-    if (!token) {
       return { isfollowed: false, isowner: false };
     }
 
     const { type, id } = parsed;
     try {
       if (type === 'playlist') {
-        const me = provider.accountId;
+        const me = provider.spotifyUserId;
         const contains = await this.fetchJson<boolean[]>(
+          provider,
           `${SPOTIFY_API_BASE}/playlists/${encodeURIComponent(id)}/followers/contains?ids=${encodeURIComponent(me)}`,
-          token,
         );
-        const playlist = await this.fetchJson<any>(
+        const playlist = await this.fetchJson<{ owner?: { id?: string } }>(
+          provider,
           `${SPOTIFY_API_BASE}/playlists/${encodeURIComponent(id)}`,
-          token,
         );
         return {
           isfollowed: Array.isArray(contains) ? !!contains[0] : false,
@@ -386,16 +413,16 @@ export class SpotifyServiceManager {
 
       if (type === 'artist' || type === 'show') {
         const resp = await this.fetchJson<boolean[]>(
+          provider,
           `${SPOTIFY_API_BASE}/me/following/contains?type=${type}&ids=${encodeURIComponent(id)}`,
-          token,
         );
         return { isfollowed: Array.isArray(resp) ? !!resp[0] : false, isowner: false };
       }
 
       if (type === 'album') {
         const resp = await this.fetchJson<boolean[]>(
+          provider,
           `${SPOTIFY_API_BASE}/me/albums/contains?ids=${encodeURIComponent(id)}`,
-          token,
         );
         return { isfollowed: Array.isArray(resp) ? !!resp[0] : false, isowner: false };
       }
@@ -413,10 +440,8 @@ export class SpotifyServiceManager {
   ): Promise<void> {
     const provider = this.resolveProvider(service, user);
     if (!provider || !this.isRealSpotifyProvider(provider)) return;
-    const parsed = this.parseSpotifyId(itemId);
+    const parsed = parseSpotifyItemId(itemId);
     if (!parsed) return;
-    const token = await provider.fetchAccessToken();
-    if (!token) return;
 
     const { type, id } = parsed;
     const method = follow ? 'PUT' : 'DELETE';
@@ -424,8 +449,8 @@ export class SpotifyServiceManager {
     try {
       if (type === 'playlist') {
         await this.doRequest(
+          provider,
           `${SPOTIFY_API_BASE}/playlists/${encodeURIComponent(id)}/followers`,
-          token,
           method,
           follow ? { public: false } : undefined,
         );
@@ -433,22 +458,23 @@ export class SpotifyServiceManager {
       }
       if (type === 'artist' || type === 'show') {
         await this.doRequest(
+          provider,
           `${SPOTIFY_API_BASE}/me/following?type=${type}&ids=${encodeURIComponent(id)}`,
-          token,
           method,
         );
         return;
       }
       if (type === 'album') {
         await this.doRequest(
+          provider,
           `${SPOTIFY_API_BASE}/me/library`,
-          token,
           method,
           { uris: [`spotify:album:${id}`] },
         );
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log.warn('spotify follow update failed', { itemId, follow, message });
     }
   }
 
@@ -837,56 +863,22 @@ export class SpotifyServiceManager {
     return cleaned.replace(/\]+$/, '').replace(/\/+$/, '');
   }
 
-  private parseSpotifyId(itemId: string): { type: 'track' | 'album' | 'artist' | 'playlist' | 'show'; id: string } | null {
-    const cleaned = this.sanitizeSpotifyId(itemId);
-    if (!cleaned) {
-      return null;
-    }
-    const match = cleaned.match(/spotify@[^:]+:(track|album|artist|playlist|show|episode):(.+)/i);
-    if (match) {
-      const type = (match[1] ?? '').toLowerCase();
-      const id = match[2] ?? '';
-      if (type === 'episode') {
-        return { type: 'show', id }; // episodes follow show subscriptions
-      }
-      return { type: type as 'track' | 'album' | 'artist' | 'playlist' | 'show', id };
-    }
-    const plain = cleaned.match(/^(track|album|artist|playlist|show):(.+)/i);
-    if (plain) {
-      const type = (plain[1] ?? '').toLowerCase();
-      const id = plain[2] ?? '';
-      if (type === 'episode') {
-        return { type: 'show', id };
-      }
-      return { type: type as 'track' | 'album' | 'artist' | 'playlist' | 'show', id };
-    }
-    return null;
-  }
-
   private async doRequest(
+    provider: SpotifyAccountProvider,
     url: string,
-    token: string,
     method: 'GET' | 'PUT' | 'DELETE',
     body?: unknown,
   ): Promise<void> {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    };
-    const init: RequestInit = { method, headers };
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
+    const result = await provider.authorizedRequest(url, { method, body });
+    if (!result.ok) {
+      this.log.warn('spotify follow request failed', { url, method, status: result.status });
     }
-    await fetch(url, init);
   }
 
-  private async fetchJson<T>(url: string, token: string): Promise<T | null> {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+  private async fetchJson<T>(provider: SpotifyAccountProvider, url: string): Promise<T | null> {
+    const result = await provider.authorizedRequest(url);
+    if (!result.ok) return null;
+    return result.body as T;
   }
 
   private displayLabel(acc: SpotifyAccountState): string {
