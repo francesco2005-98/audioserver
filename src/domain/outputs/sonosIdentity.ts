@@ -6,6 +6,18 @@
 export const SONOS_OWN_CONTAINER_SERVICE_ID = 'audioserver';
 
 /**
+ * Host as it belongs in `http://host:1400/...`. An IPv6 address has colons, so without
+ * brackets the port is parsed as part of the address and every control request misses.
+ */
+export function sonosHttpHost(host: string): string {
+  const trimmed = host.trim();
+  if (!trimmed || trimmed.startsWith('[')) {
+    return trimmed;
+  }
+  return trimmed.includes(':') ? `[${trimmed}]` : trimmed;
+}
+
+/**
  * True when `mediaUrl` is a stream this server hands a Sonos speaker: `/streams/<zoneId>/...` on
  * the host and port of `baseUrl`. Any scheme is accepted, because the SOAP path rewrites radio
  * streams to `x-rincon-mp3radio://`. A `/streams/` path on someone else's host is just an

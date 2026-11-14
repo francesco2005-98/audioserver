@@ -4,9 +4,10 @@ import {
   type DlnaEndpointInfo,
 } from '@/adapters/outputs/dlna/dlnaDiscovery';
 import dgram from 'node:dgram';
-import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createLogger } from '@/shared/logging/logger';
+import { advertisableIpv4Addresses, localIpv4Candidates } from '@/shared/utils/net';
+import { sonosHttpHost } from '@/domain/outputs/sonosIdentity';
 
 interface SsdpResponse {
   location: string;
@@ -253,7 +254,7 @@ async function fetchTopology(host: string, timeoutMs: number): Promise<string | 
   const timeout = setTimeout(() => controller.abort(), Math.max(300, timeoutMs));
   timeout.unref();
   try {
-    const response = await fetch(`http://${host}:1400/ZoneGroupTopology/Control`, {
+    const response = await fetch(`http://${sonosHttpHost(host)}:1400/ZoneGroupTopology/Control`, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset="utf-8"',
@@ -293,7 +294,7 @@ export async function resolveSonosEndpointsByHost(
     return null;
   }
   return resolveEndpointsFromDescription(
-    `http://${normalized}:1400/xml/device_description.xml`,
+    `http://${sonosHttpHost(normalized)}:1400/xml/device_description.xml`,
     timeoutMs,
   );
 }
@@ -358,7 +359,7 @@ async function fetchStatus(
   host: string,
   householdId?: string,
 ): Promise<{ roomName?: string; householdId?: string } | null> {
-  const url = `http://${host}:1400/status/zp`;
+  const url = `http://${sonosHttpHost(host)}:1400/status/zp`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
   timeout.unref();
@@ -550,24 +551,19 @@ function normalizeHost(value: string): string {
 }
 
 function buildLocalScanHosts(): string[] {
-  const interfaces = os.networkInterfaces();
+  // Bridge and container addresses are not where the speakers live, and scanning
+  // them burns the timeout before the LAN subnet is finished.
+  const addresses = advertisableIpv4Addresses();
+  const bases = (addresses.length ? addresses : localIpv4Candidates()).map((address) =>
+    address.split('.').slice(0, 3).join('.'),
+  );
   const hosts = new Set<string>();
-  for (const entries of Object.values(interfaces)) {
-    for (const entry of entries ?? []) {
-      if (entry.family !== 'IPv4') {
-        continue;
-      }
-      if (entry.internal) {
-        continue;
-      }
-      const parts = entry.address.split('.');
-      if (parts.length !== 4) {
-        continue;
-      }
-      const base = parts.slice(0, 3).join('.');
-      for (let i = 1; i <= 254; i += 1) {
-        hosts.add(`${base}.${i}`);
-      }
+  for (const base of bases) {
+    if (!base || base.split('.').length !== 3) {
+      continue;
+    }
+    for (let i = 1; i <= 254; i += 1) {
+      hosts.add(`${base}.${i}`);
     }
   }
   return Array.from(hosts);

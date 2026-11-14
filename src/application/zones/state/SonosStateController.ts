@@ -15,7 +15,7 @@ type AnySonosClient = SonosClient | S1Client;
 import type { ZoneConfig } from '@/domain/config/types';
 import type { ZoneState } from '@/domain/zones/zoneState';
 import { AudioType } from '@/domain/zones/enums';
-import { SONOS_OWN_CONTAINER_SERVICE_ID, isOwnStreamUrl } from '@/domain/outputs/sonosIdentity';
+import { SONOS_OWN_CONTAINER_SERVICE_ID, isOwnStreamUrl, sonosHttpHost } from '@/domain/outputs/sonosIdentity';
 import { buildBaseUrl } from '@/shared/streamUrl';
 import type { ConfigPort } from '@/ports/ConfigPort';
 import { createLogger } from '@/shared/logging/logger';
@@ -397,7 +397,7 @@ export class SonosStateController implements ZoneStateController {
     const timeout = setTimeout(() => controller.abort(), TRANSPORT_CHECK_TIMEOUT_MS);
     timeout.unref?.();
     try {
-      const response = await fetch(`http://${formatHost(host)}:1400/MediaRenderer/AVTransport/Control`, {
+      const response = await fetch(`http://${sonosHttpHost(host)}:1400/MediaRenderer/AVTransport/Control`, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset="utf-8"',
@@ -706,10 +706,6 @@ function mapTransportInfoState(state: string | null): ZoneState['mode'] | null {
   }
 }
 
-function formatHost(host: string): string {
-  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
-}
-
 /**
  * Closes a client's transport without going through its own disconnect(), which can throw
  * before it gets that far. Only the S2 client has a socket to close; S1 disconnect() does not
@@ -861,10 +857,11 @@ function normalizeCoverUrl(value: string, host: string | null): string | null {
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (!host) return null;
+  const address = sonosHttpHost(host);
   if (trimmed.startsWith('/')) {
-    return `http://${host}:1400${trimmed}`;
+    return `http://${address}:1400${trimmed}`;
   }
-  return `http://${host}:1400/${trimmed}`;
+  return `http://${address}:1400/${trimmed}`;
 }
 
 function withCacheBust(url: string, revision: number): string {
