@@ -1,5 +1,5 @@
-# Ignore compiled code
-dist
+# Ignore the server build. The protocol libraries under packages/ ship their dist.
+/dist
 
 # Ignore Config files
 data
@@ -91,7 +91,7 @@ web_modules/
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+/dist
 
 # Gatsby files
 .cache/

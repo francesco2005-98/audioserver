@@ -1,0 +1,31 @@
+import { EventEmitter } from 'eventemitter3';
+import type { CastChannelEvents, CastChannelOptions, CastMessagePayload } from './types.js';
+export declare class CastChannel extends EventEmitter<CastChannelEvents> {
+    private readonly options;
+    private socket?;
+    private buffer;
+    private readonly pendingRequests;
+    private readonly backoff;
+    private reconnecting;
+    private state;
+    private lastError;
+    private pingTimer?;
+    private pongTimer?;
+    private requestId;
+    constructor(options: CastChannelOptions);
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    sendMessage(payload: CastMessagePayload): Promise<void>;
+    sendJson(namespace: string, sourceId: string, destinationId: string, message: unknown): Promise<void>;
+    sendRequest<T>(namespace: string, sourceId: string, destinationId: string, message: Record<string, unknown>, timeoutMs: number, predicate?: (payload: unknown) => boolean): Promise<T>;
+    private openSocket;
+    private handleClose;
+    private reconnect;
+    private handleData;
+    private handleMessage;
+    private startHeartbeat;
+    private resetPongTimer;
+    private cleanup;
+    private setState;
+    private withConnectTimeout;
+}
