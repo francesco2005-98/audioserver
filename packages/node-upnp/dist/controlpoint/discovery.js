@@ -1,0 +1,332 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveDlnaEndpoints = resolveDlnaEndpoints;
+exports.discoverDlnaDevices = discoverDlnaDevices;
+const node_dgram_1 = __importDefault(require("node:dgram"));
+const promises_1 = require("node:timers/promises");
+const node_url_1 = require("node:url");
+const SSDP_ADDRESS = '239.255.255.250';
+const SSDP_PORT = 1900;
+const SEARCH_TARGETS = [
+    'urn:schemas-upnp-org:device:MediaRenderer:1',
+    'urn:schemas-upnp-org:service:AVTransport:1',
+    'ssdp:all',
+];
+const endpointCache = new Map();
+function resolveDlnaEndpoints(options = {}) {
+    const key = options.host?.toLowerCase() ?? '*';
+    const cached = endpointCache.get(key);
+    if (cached) {
+        return cached;
+    }
+    const promise = discover(options).finally(() => {
+        endpointCache.delete(key);
+    });
+    endpointCache.set(key, promise);
+    return promise;
+}
+// Some renderers (notably a few B&O/Samsung models) answer SSDP unreliably, so a single scan
+// randomly misses them. We remember devices seen recently and merge them back in, so a device
+// that was visible moments ago doesn't flicker out of the list on one dropped burst.
+const RECENT_DEVICE_TTL_MS = 90_000;
+const recentDevices = new Map();
+function pruneRecentDevices(now) {
+    for (const [id, entry] of recentDevices) {
+        if (now - entry.lastSeen > RECENT_DEVICE_TTL_MS) {
+            recentDevices.delete(id);
+        }
+    }
+}
+async function discoverDlnaDevices(options = {}) {
+    const log = options.logger;
+    const responses = await searchSsdp(options);
+    const hostFilter = options.host?.toLowerCase();
+    const devices = [];
+    const seen = new Set();
+    for (const { location, responder, usn, st } of responses) {
+        const stLower = (st ?? '').toLowerCase();
+        if (stLower &&
+            !stLower.includes('mediarenderer') &&
+            !stLower.includes('avtransport') &&
+            !stLower.startsWith('uuid:')) {
+            continue;
+        }
+        try {
+            const description = await fetchWithTimeout(location, options.timeoutMs ?? 1500);
+            const parsed = parseDeviceDescription(description, location);
+            if (hostFilter && !matchesHost(hostFilter, location, responder, parsed.friendlyName)) {
+                continue;
+            }
+            const id = (usn?.split('::')[0] ?? '').trim() || `${responder}|${location}`;
+            if (seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
+            const host = normalizeHost(responder) ||
+                normalizeHost(new node_url_1.URL(location).hostname) ||
+                normalizeHost(parsed.friendlyName ?? '') ||
+                responder;
+            devices.push({
+                id,
+                name: parsed.friendlyName?.trim(),
+                host,
+                address: responder,
+                location,
+                controlUrl: parsed.controlUrl,
+                renderingControlUrl: parsed.renderingControlUrl,
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log?.debug?.('failed to parse device description', { location, message });
+            if (hostFilter && !matchesHost(hostFilter, location, responder)) {
+                continue;
+            }
+            const id = (usn?.split('::')[0] ?? '').trim() || `${responder}|${location}`;
+            if (seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
+            devices.push({
+                id,
+                host: responder,
+                address: responder,
+                location,
+            });
+        }
+    }
+    // A host-scoped probe is a targeted lookup, not a "browse everything" — don't let it
+    // touch the recent-device cache (it would only ever hold the one device).
+    if (hostFilter) {
+        return devices;
+    }
+    const now = Date.now();
+    pruneRecentDevices(now);
+    // Refresh the cache with everything we saw this round.
+    for (const device of devices) {
+        recentDevices.set(device.id, { device, lastSeen: now });
+    }
+    // Merge back any recently-seen device that this particular scan happened to miss.
+    for (const [id, entry] of recentDevices) {
+        if (!seen.has(id)) {
+            seen.add(id);
+            devices.push(entry.device);
+        }
+    }
+    return devices;
+}
+async function discover(options) {
+    const log = options.logger;
+    const responses = await searchSsdp(options);
+    const hostFilter = options.host?.toLowerCase();
+    for (const { location, responder } of responses) {
+        try {
+            const description = await fetchWithTimeout(location, options.timeoutMs ?? 1500);
+            const parsed = parseDeviceDescription(description, location);
+            if (!parsed.controlUrl) {
+                continue;
+            }
+            if (hostFilter && !matchesHost(hostFilter, location, responder, parsed.friendlyName)) {
+                continue;
+            }
+            if (parsed.controlUrl) {
+                log?.debug?.('dlna endpoints discovered', { info: parsed });
+                return { ...parsed, descriptionUrl: location };
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log?.debug?.('failed to parse device description', { location, message });
+        }
+    }
+    return null;
+}
+async function searchSsdp(options) {
+    const log = options.logger;
+    const socket = node_dgram_1.default.createSocket({ type: 'udp4', reuseAddr: true });
+    // SSDP over UDP multicast is lossy and renderers answer spread randomly across the MX
+    // window, so a single burst reliably misses devices (and misses different ones each run).
+    // We keep the socket open for the whole window, re-send the M-SEARCH bursts a few times,
+    // and only close once the window has fully elapsed (>= MX so late responders still land).
+    const mx = Math.max(1, Math.min(5, options.mx ?? 2));
+    const totalWindowMs = Math.max(options.timeoutMs ?? 4000, mx * 1000 + 500);
+    const responses = [];
+    const seen = new Set();
+    // Register the listener BEFORE binding/sending so fast responders can't answer into a void.
+    socket.on('message', (msg, rinfo) => {
+        try {
+            const headers = parseSsdpResponse(msg.toString());
+            const location = headers.location;
+            if (!location) {
+                return;
+            }
+            const key = `${rinfo.address}|${location}`;
+            if (seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            responses.push({
+                location,
+                responder: rinfo.address,
+                usn: headers.usn,
+                st: headers.st ?? headers.nt,
+            });
+        }
+        catch (error) {
+            log?.debug?.('error parsing ssdp response', {
+                message: error instanceof Error ? error.message : String(error),
+            });
+        }
+    });
+    await new Promise((resolve, reject) => {
+        socket.once('error', reject);
+        socket.bind(() => resolve());
+    });
+    const requests = SEARCH_TARGETS.map((target) => buildSearchRequest(mx, target));
+    const hostFilter = options.host?.trim();
+    const sendBurst = () => {
+        for (const request of requests) {
+            socket.send(request, 0, request.length, SSDP_PORT, SSDP_ADDRESS);
+            if (hostFilter) {
+                socket.send(request, 0, request.length, SSDP_PORT, hostFilter);
+            }
+        }
+    };
+    // Repeat the burst roughly every second so a dropped packet gets another chance and slow
+    // renderers still get pinged; the loop naturally stops when the window elapses.
+    const burstIntervalMs = 1000;
+    let elapsed = 0;
+    sendBurst();
+    while (elapsed + burstIntervalMs < totalWindowMs) {
+        await (0, promises_1.setTimeout)(burstIntervalMs);
+        elapsed += burstIntervalMs;
+        sendBurst();
+    }
+    await (0, promises_1.setTimeout)(Math.max(0, totalWindowMs - elapsed));
+    socket.close();
+    return responses;
+}
+function matchesHost(filter, location, responder, friendlyName) {
+    const normalizedFilter = normalizeHost(filter);
+    const locationHost = normalizeHost(new node_url_1.URL(location).hostname);
+    const responderHost = normalizeHost(responder);
+    if (normalizedFilter && (normalizedFilter === locationHost || normalizedFilter === responderHost)) {
+        return true;
+    }
+    if (friendlyName) {
+        const friendly = normalizeHost(friendlyName);
+        if (friendly === normalizedFilter ||
+            friendly.replace(/\s+/g, '') === normalizedFilter ||
+            normalizedFilter.replace(/\s+/g, '') === friendly) {
+            return true;
+        }
+    }
+    return false;
+}
+function normalizeHost(value) {
+    return value.trim().toLowerCase().replace(/^\[|\]$/g, '').split('%')[0] ?? '';
+}
+function buildSearchRequest(mx, target) {
+    const payload = [
+        'M-SEARCH * HTTP/1.1',
+        `HOST: ${SSDP_ADDRESS}:${SSDP_PORT}`,
+        'MAN: "ssdp:discover"',
+        `MX: ${mx}`,
+        `ST: ${target}`,
+        '',
+        '',
+    ].join('\r\n');
+    return Buffer.from(payload, 'utf-8');
+}
+function parseSsdpResponse(raw) {
+    const lines = raw.split(/\r?\n/);
+    const headers = {};
+    for (const line of lines) {
+        const idx = line.indexOf(':');
+        if (idx === -1) {
+            continue;
+        }
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim();
+        headers[key] = value;
+    }
+    return headers;
+}
+async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs).unref();
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.text();
+    }
+    finally {
+        clearTimeout(timeout);
+    }
+}
+function parseDeviceDescription(xml, location) {
+    const services = extractServices(xml);
+    const urlBase = extractTag(xml, 'URLBase');
+    let base;
+    try {
+        base = urlBase ? new node_url_1.URL(urlBase, location) : new node_url_1.URL(location);
+    }
+    catch {
+        base = new node_url_1.URL(location);
+    }
+    const getUrl = (value) => {
+        if (!value) {
+            return undefined;
+        }
+        try {
+            return new node_url_1.URL(value, base).toString();
+        }
+        catch {
+            return undefined;
+        }
+    };
+    const avTransport = selectService(services, 'avtransport');
+    const rendering = selectService(services, 'renderingcontrol');
+    const connectionManager = selectService(services, 'connectionmanager');
+    return {
+        friendlyName: extractTag(xml, 'friendlyName'),
+        controlUrl: getUrl(avTransport?.controlUrl),
+        renderingControlUrl: getUrl(rendering?.controlUrl),
+        avTransportEventUrl: getUrl(avTransport?.eventSubUrl),
+        renderingControlEventUrl: getUrl(rendering?.eventSubUrl),
+        connectionManagerUrl: getUrl(connectionManager?.controlUrl),
+    };
+}
+function extractServices(xml) {
+    const map = [];
+    const serviceRegex = /<(?:\w+:)?service>([\s\S]*?)<\/(?:\w+:)?service>/gi;
+    let match;
+    while ((match = serviceRegex.exec(xml)) !== null) {
+        const block = match[1] ?? '';
+        const type = extractTag(block, 'serviceType');
+        const control = extractTag(block, 'controlURL');
+        const eventSub = extractTag(block, 'eventSubURL');
+        if (type && control) {
+            map.push({
+                type: type.trim(),
+                controlUrl: control.trim(),
+                eventSubUrl: eventSub?.trim() || undefined,
+            });
+        }
+    }
+    return map;
+}
+function selectService(services, keyword) {
+    const target = keyword.toLowerCase();
+    return services.find(({ type }) => type.toLowerCase().includes(target));
+}
+function extractTag(block, tag) {
+    const regex = new RegExp(`<(?:\\w+:)?${tag}>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`, 'i');
+    const match = block.match(regex);
+    return match?.[1]?.trim();
+}

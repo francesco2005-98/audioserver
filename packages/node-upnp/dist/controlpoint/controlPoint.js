@@ -1,0 +1,611 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DlnaControlPoint = void 0;
+exports.parseSinkContentTypes = parseSinkContentTypes;
+const promises_1 = require("node:timers/promises");
+const node_url_1 = require("node:url");
+const soap_js_1 = require("../soap/soap.js");
+const discovery_js_1 = require("./discovery.js");
+const eventSubscriber_js_1 = require("../gena/eventSubscriber.js");
+class DlnaControlPoint {
+    log;
+    controllers = new Set();
+    commandTimeoutMs;
+    host;
+    controlUrl;
+    renderingControlUrl;
+    connectionManagerUrl;
+    /** Cached answer to GetProtocolInfo; the sink list is a property of the device, not of a session. */
+    sinkContentTypes;
+    discoveryPromise;
+    autoDiscover;
+    deviceName;
+    // Push output is stateful: every setUri/play sends a full Stop→SetURI→Play sequence to
+    // physical hardware, and callers may fire it in a burst. We serialize commands into a
+    // single chain so overlapping sequences can't interleave — otherwise a renderer can be
+    // left stuck TRANSITIONING and every Play faults with 701.
+    commandChain = Promise.resolve();
+    // GENA event subscriber for device-side state (play/pause/stop/volume from the renderer).
+    eventSubscriber;
+    eventHandlers;
+    eventCallbackHost = '127.0.0.1';
+    avTransportEventUrl;
+    renderingControlEventUrl;
+    eventDiscoveryStarted = false;
+    constructor(opts = {}) {
+        this.log = opts.logger;
+        this.commandTimeoutMs = opts.commandTimeoutMs ?? 2500;
+        this.host = typeof opts.host === 'string' ? opts.host.trim() : '';
+        this.autoDiscover = opts.autoDiscover ?? true;
+        this.deviceName =
+            typeof opts.deviceName === 'string' && opts.deviceName.trim().length > 0
+                ? opts.deviceName.trim()
+                : '';
+        if (typeof opts.controlUrl === 'string' && opts.controlUrl.trim().length > 0) {
+            this.controlUrl = opts.controlUrl.trim();
+            this.renderingControlUrl =
+                typeof opts.renderingControlUrl === 'string' && opts.renderingControlUrl.trim().length > 0
+                    ? opts.renderingControlUrl.trim()
+                    : this.deriveRenderingUrl(this.controlUrl);
+            this.log?.info?.('DLNA control point configured with manual control URL', {
+                controlUrl: this.controlUrl,
+            });
+        }
+        else if (typeof opts.renderingControlUrl === 'string' && opts.renderingControlUrl.trim()) {
+            this.renderingControlUrl = opts.renderingControlUrl.trim();
+        }
+    }
+    /**
+     * Resolve the control URLs. Returns true once an AVTransport control URL is
+     * known (from manual config or SSDP discovery). Concurrent callers share one
+     * in-flight discovery.
+     */
+    async ensureEndpoints() {
+        if (this.controlUrl) {
+            // Control URL is known (manual config or prior discovery), so playback works. But event
+            // URLs may not be resolved yet — a manually-configured controlUrl skips discovery
+            // entirely. Fetch the device description once in the background to enable GENA eventing
+            // (bidirectional state) without blocking playback.
+            if (this.host &&
+                this.eventHandlers &&
+                !this.avTransportEventUrl &&
+                !this.renderingControlEventUrl &&
+                !this.eventDiscoveryStarted) {
+                this.eventDiscoveryStarted = true;
+                void this.resolveEventEndpoints();
+            }
+            return true;
+        }
+        if (this.discoveryPromise) {
+            return this.discoveryPromise;
+        }
+        if (!this.host && !this.autoDiscover) {
+            this.log?.warn?.('DLNA command skipped; no host or control URL configured');
+            return false;
+        }
+        this.discoveryPromise = this.resolveEndpoints().finally(() => {
+            this.discoveryPromise = undefined;
+        });
+        return this.discoveryPromise;
+    }
+    /**
+     * SetAVTransportURI: hand the renderer a stream URI plus a caller-supplied
+     * DIDL-Lite metadata string, then Play. Sends the full Stop→SetURI→Play
+     * sequence, serialized against any other in-flight command.
+     */
+    async setUri(uri, didlMetadata) {
+        if (!(await this.ensureEndpoints())) {
+            return false;
+        }
+        return this.enqueueResult(() => this.sendPlaybackWithSoap(uri, didlMetadata));
+    }
+    /**
+     * Re-send SetAVTransportURI ONLY (no Stop/Play) so the renderer adopts richer
+     * metadata (e.g. title/duration arriving after the initial play) without
+     * interrupting playback. Serialized against other commands.
+     */
+    async updateMetadata(uri, didlMetadata) {
+        if (!this.controlUrl) {
+            return false;
+        }
+        return this.enqueueResult(() => this.invokeActionWithRetry('SetAVTransportURI', this.buildSetUriBody(uri, didlMetadata), 1, {
+            timeoutMs: 1500,
+            timeoutOk: true,
+        }));
+    }
+    async play() {
+        if (!(await this.ensureEndpoints())) {
+            return false;
+        }
+        return this.enqueueResult(() => this.invokeAction('Play', this.buildPlayBody()));
+    }
+    async pause() {
+        if (!(await this.ensureEndpoints())) {
+            return false;
+        }
+        return this.enqueueResult(() => this.invokeAction('Pause', this.buildPauseBody()));
+    }
+    async stop() {
+        if (!(await this.ensureEndpoints())) {
+            return false;
+        }
+        return this.enqueueResult(() => this.invokeAction('Stop', this.buildStopBody()));
+    }
+    /**
+     * The MIME types this renderer says it can play, from ConnectionManager::GetProtocolInfo's `Sink`.
+     *
+     * A UPnP renderer publishes what it accepts as protocolInfo entries — `http-get:*:audio/flac:*` —
+     * and asking is the only way to know whether a stream will play before sending it. A renderer that
+     * cannot decode what it is given does not complain; it plays silence.
+     *
+     * Returns `null` when the device has no ConnectionManager, does not answer, or answers with
+     * something unparseable — deliberately not an empty array, because "it told us nothing" and "it
+     * accepts nothing" must not read the same to a caller deciding what to send. Cached after the first
+     * answer.
+     */
+    async getSinkContentTypes() {
+        if (this.sinkContentTypes !== undefined) {
+            return this.sinkContentTypes;
+        }
+        if (!(await this.ensureEndpoints()) || !this.connectionManagerUrl) {
+            this.log?.debug?.('no ConnectionManager endpoint; sink formats unknown', { host: this.host });
+            return null;
+        }
+        const body = '<?xml version="1.0" encoding="utf-8"?>' +
+            '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"' +
+            ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">' +
+            '<s:Body><u:GetProtocolInfo xmlns:u="urn:schemas-upnp-org:service:ConnectionManager:1"/></s:Body>' +
+            '</s:Envelope>';
+        const controller = new AbortController();
+        this.controllers.add(controller);
+        const timeout = setTimeout(() => controller.abort(), this.commandTimeoutMs);
+        timeout.unref();
+        try {
+            const response = await fetch(this.connectionManagerUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/xml; charset="utf-8"',
+                    SOAPAction: '"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"',
+                },
+                body,
+                signal: controller.signal,
+            });
+            const text = await response.text();
+            if (!response.ok) {
+                this.log?.debug?.('GetProtocolInfo failed', { host: this.host, status: response.status });
+                return null;
+            }
+            const types = parseSinkContentTypes(text);
+            this.sinkContentTypes = types;
+            this.log?.info?.('renderer sink formats', { host: this.host, count: types?.length ?? 0, types });
+            return types;
+        }
+        catch (err) {
+            this.log?.debug?.('GetProtocolInfo error', {
+                host: this.host,
+                message: err instanceof Error ? err.message : String(err),
+            });
+            return null;
+        }
+        finally {
+            clearTimeout(timeout);
+            this.controllers.delete(controller);
+        }
+    }
+    async setVolume(percent) {
+        if (!(await this.ensureEndpoints())) {
+            return false;
+        }
+        const url = this.renderingControlUrl;
+        if (!url) {
+            this.log?.debug?.('rendering control URL missing; skipping volume update');
+            return false;
+        }
+        const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+        const ok = await this.invokeRenderingAction('SetVolume', this.buildSetVolumeBody(clamped), {
+            optional: true,
+        });
+        if (ok) {
+            this.log?.info?.('DLNA volume set', { volume: clamped });
+        }
+        return ok;
+    }
+    /**
+     * Subscribe to GENA events (transport state, volume/mute) from the renderer.
+     * Resolves the event endpoints (via discovery when only a control URL is
+     * known) and starts a DlnaEventSubscriber. `localHost` is the LAN address the
+     * renderer should call back to.
+     */
+    async subscribeEvents(handlers, localHost = '127.0.0.1') {
+        this.eventHandlers = handlers;
+        this.eventCallbackHost = localHost;
+        // Make sure endpoints (and, for a manual controlUrl, background event discovery) are resolved.
+        await this.ensureEndpoints();
+        if (!this.avTransportEventUrl && !this.renderingControlEventUrl) {
+            // Endpoints not known yet (manual controlUrl-only, or discovery hasn't populated them).
+            // resolveEventEndpoints() kicked off by ensureEndpoints will call ensureEventSubscription
+            // once URLs arrive; nothing more to do here.
+            if (!this.host) {
+                this.log?.debug?.('no event endpoints and no host; GENA subscription unavailable');
+            }
+            return;
+        }
+        this.ensureEventSubscription();
+    }
+    dispose() {
+        for (const controller of this.controllers) {
+            controller.abort();
+        }
+        this.controllers.clear();
+        this.eventSubscriber?.dispose();
+        this.eventSubscriber = undefined;
+        this.log?.debug?.('DLNA control point disposed');
+    }
+    async resolveEndpoints() {
+        // Without an explicit host, browse the network and match a renderer by friendly name.
+        if (!this.host && this.autoDiscover) {
+            const resolvedHost = await this.autoResolveHost();
+            if (!resolvedHost) {
+                return false;
+            }
+            this.host = resolvedHost;
+        }
+        const info = await (0, discovery_js_1.resolveDlnaEndpoints)({ host: this.host, logger: this.log });
+        if (info) {
+            this.applyDiscoveredEndpoints(info);
+            return Boolean(this.controlUrl);
+        }
+        this.log?.warn?.('no DLNA endpoints discovered', { host: this.host });
+        return false;
+    }
+    /**
+     * Best-effort background fetch of the renderer's event (GENA) endpoints when only a control
+     * URL was known. Does not affect playback; on success it starts the event subscription.
+     */
+    async resolveEventEndpoints() {
+        try {
+            const info = await (0, discovery_js_1.resolveDlnaEndpoints)({ host: this.host, logger: this.log });
+            if (info?.avTransportEventUrl || info?.renderingControlEventUrl) {
+                if (info.avTransportEventUrl) {
+                    this.avTransportEventUrl = info.avTransportEventUrl;
+                }
+                if (info.renderingControlEventUrl) {
+                    this.renderingControlEventUrl = info.renderingControlEventUrl;
+                }
+                this.ensureEventSubscription();
+            }
+        }
+        catch (err) {
+            this.log?.debug?.('DLNA event endpoint resolve failed', {
+                message: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+    async autoResolveHost() {
+        const devices = await (0, discovery_js_1.discoverDlnaDevices)({ logger: this.log });
+        if (!devices.length) {
+            this.log?.warn?.('DLNA auto-discovery found no renderers', { deviceName: this.deviceName });
+            return '';
+        }
+        const preferred = this.deviceName.toLowerCase();
+        const match = (preferred
+            ? devices.find((device) => (device.name ?? '').toLowerCase() === preferred)
+            : undefined) ?? devices[0];
+        if (!match?.host) {
+            return '';
+        }
+        this.log?.info?.('DLNA renderer auto-discovered', {
+            host: match.host,
+            name: match.name,
+            matchedByName: (match.name ?? '').toLowerCase() === preferred,
+        });
+        return match.host;
+    }
+    async sendPlaybackWithSoap(uri, didl) {
+        this.log?.info?.('sending playback command', { uri });
+        await this.invokeAction('Stop', this.buildStopBody(), { optional: true });
+        // Many renderers (measured: B&O/QPlay) accept SetAVTransportURI but never send a SOAP
+        // reply, so a long timeout just stalls us for the full window before Play — this was the
+        // ~minute start delay. Use a short timeout and treat a timeout as "probably accepted":
+        // the renderer has taken the URI, and the Play step below (with 701 retry) confirms it.
+        // Single attempt: a renderer that replies does so in well under this window, and one that
+        // stays silent won't reply to a retry either — retrying only stacks another stall. The
+        // Play step's 701 retry is the real readiness check, so a slightly-too-short window here
+        // is harmless: Play just retries until the renderer is out of TRANSITIONING.
+        let timedOut = false;
+        const didSetUri = await this.invokeActionWithRetry('SetAVTransportURI', this.buildSetUriBody(uri, didl), 1, {
+            timeoutMs: 1500,
+            timeoutOk: true,
+            onTimeout: () => {
+                timedOut = true;
+            },
+        });
+        // A hard fault on SetURI (false *without* a timeout) means the renderer rejected the URI.
+        // A silent timeout means the URI was likely set, so proceed straight to Play.
+        if (!didSetUri && !timedOut) {
+            this.log?.warn?.('DLNA SetAVTransportURI faulted; proceeding to Play anyway');
+        }
+        await (0, promises_1.setTimeout)(200);
+        // Retry Play while the renderer may still be TRANSITIONING (701). Renderers that replied
+        // to SetURI are ready almost immediately; silent ones (timedOut) get a touch more slack.
+        const playAttempts = 6;
+        const playDelay = timedOut ? 600 : 300;
+        if (!(await this.invokeActionWithRetry('Play', this.buildPlayBody(), playAttempts, {
+            retryDelayMs: playDelay,
+            retryFaultCodes: ['701'],
+        }))) {
+            this.log?.warn?.('DLNA Play did not succeed after retries', { uri });
+            return false;
+        }
+        this.log?.info?.('DLNA playback started', { uri });
+        return true;
+    }
+    /**
+     * Run a task strictly after any previous one for this control point has settled, so
+     * overlapping Stop/SetURI/Play sequences can never interleave on the renderer.
+     */
+    enqueueResult(task) {
+        const run = this.commandChain.then(task, task);
+        // Keep the chain alive even if a task throws, but don't leak the rejection.
+        this.commandChain = run.then(() => undefined, () => undefined);
+        return run;
+    }
+    async invokeActionWithRetry(action, body, attempts, options = {}) {
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            const success = await this.invokeAction(action, body, options);
+            if (success) {
+                return true;
+            }
+            if (attempt < attempts) {
+                await (0, promises_1.setTimeout)(options.retryDelayMs ?? 150);
+            }
+        }
+        return false;
+    }
+    async invokeAction(action, body, options = {}) {
+        if (!this.controlUrl) {
+            this.log?.warn?.('AVTransport command skipped; endpoint unknown', { action });
+            return false;
+        }
+        return this.invokeServiceAction(this.controlUrl, 'AVTransport', action, body, options);
+    }
+    async invokeRenderingAction(action, body, options = {}) {
+        if (!this.renderingControlUrl) {
+            this.log?.debug?.('RenderingControl command skipped; endpoint unknown', { action });
+            return false;
+        }
+        return this.invokeServiceAction(this.renderingControlUrl, 'RenderingControl', action, body, options);
+    }
+    async invokeServiceAction(url, service, action, body, options = {}) {
+        const controller = new AbortController();
+        this.controllers.add(controller);
+        const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? this.commandTimeoutMs);
+        timeout.unref();
+        try {
+            this.log?.debug?.('DLNA soap request', { action, service });
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/xml; charset="utf-8"',
+                    SOAPAction: `"urn:schemas-upnp-org:service:${service}:1#${action}"`,
+                },
+                body,
+                signal: controller.signal,
+            });
+            let text = '';
+            try {
+                text = await response.text();
+            }
+            catch (err) {
+                this.log?.debug?.('dlna control response read failed', {
+                    status: response.status,
+                    message: err instanceof Error ? err.message : String(err),
+                });
+            }
+            if (!response.ok && response.status !== 500) {
+                throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+            }
+            if (response.ok) {
+                this.log?.info?.('DLNA action succeeded', { action, service });
+                return true;
+            }
+            const fault = text.slice(0, 2000);
+            // Some renderers (notably B&O/QPlay) briefly sit in TRANSITIONING right after
+            // SetAVTransportURI and reject Play with 701 "Transition not available". That's a
+            // transient we want to *retry*, not soft-accept — soft-accepting reports success while
+            // the renderer never actually started (this was the source of the long start delay).
+            const errorCode = (0, soap_js_1.extractFaultCode)(fault);
+            if (errorCode && options.retryFaultCodes?.includes(errorCode)) {
+                this.log?.debug?.('DLNA action returned retryable SOAP fault', {
+                    action,
+                    service,
+                    errorCode,
+                });
+                return false;
+            }
+            this.log?.warn?.('DLNA action returned SOAP fault', {
+                action,
+                status: response.status,
+                service,
+                body: fault,
+            });
+            if (options.softFaultOk) {
+                return true;
+            }
+            return options.optional ?? false;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const isAbort = error instanceof Error && error.name === 'AbortError';
+            if (isAbort && options.timeoutOk) {
+                this.log?.debug?.('DLNA request timed out; continuing', { action, service });
+                options.onTimeout?.();
+                return false;
+            }
+            if (options.optional) {
+                this.log?.debug?.('optional command failed', { action, service, message });
+            }
+            else {
+                this.log?.warn?.('command failed', { action, service, message });
+            }
+            return options.optional ?? false;
+        }
+        finally {
+            clearTimeout(timeout);
+            this.controllers.delete(controller);
+        }
+    }
+    buildSetUriBody(uri, didl) {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <CurrentURI>${(0, soap_js_1.escapeXml)(uri)}</CurrentURI>
+      <CurrentURIMetaData>${(0, soap_js_1.escapeXml)(didl)}</CurrentURIMetaData>
+    </u:SetAVTransportURI>
+  </s:Body>
+</s:Envelope>`;
+    }
+    buildPlayBody() {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <Speed>1</Speed>
+    </u:Play>
+  </s:Body>
+</s:Envelope>`;
+    }
+    buildPauseBody() {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+    </u:Pause>
+  </s:Body>
+</s:Envelope>`;
+    }
+    buildStopBody() {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+    </u:Stop>
+  </s:Body>
+</s:Envelope>`;
+    }
+    buildSetVolumeBody(volume) {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+      <InstanceID>0</InstanceID>
+      <Channel>Master</Channel>
+      <DesiredVolume>${volume}</DesiredVolume>
+    </u:SetVolume>
+  </s:Body>
+</s:Envelope>`;
+    }
+    deriveRenderingUrl(avTransportUrl) {
+        try {
+            const parsed = new node_url_1.URL(avTransportUrl);
+            if (parsed.pathname.toLowerCase().includes('avtransport')) {
+                parsed.pathname = parsed.pathname.replace(/AVTransport/gi, 'RenderingControl');
+            }
+            else {
+                parsed.pathname = `${parsed.pathname.replace(/\/$/, '')}/RenderingControl/Control`;
+            }
+            return parsed.toString();
+        }
+        catch {
+            return undefined;
+        }
+    }
+    applyDiscoveredEndpoints(info) {
+        if (info.controlUrl) {
+            this.controlUrl = info.controlUrl;
+        }
+        if (info.renderingControlUrl) {
+            this.renderingControlUrl = info.renderingControlUrl;
+        }
+        else if (this.controlUrl && !this.renderingControlUrl) {
+            this.renderingControlUrl = this.deriveRenderingUrl(this.controlUrl);
+        }
+        if (info.avTransportEventUrl) {
+            this.avTransportEventUrl = info.avTransportEventUrl;
+        }
+        if (info.renderingControlEventUrl) {
+            this.renderingControlEventUrl = info.renderingControlEventUrl;
+        }
+        if (info.connectionManagerUrl) {
+            this.connectionManagerUrl = info.connectionManagerUrl;
+        }
+        this.log?.info?.('DLNA discovery completed', {
+            host: this.host,
+            controlUrl: this.controlUrl,
+        });
+        this.ensureEventSubscription();
+    }
+    /**
+     * Start (or refresh) GENA event subscriptions so device-side actions (play/pause/stop on the
+     * renderer, volume knob) flow back to the caller's handlers. Only runs when the caller asked
+     * for events (subscribeEvents) and the renderer advertised event endpoints; manual
+     * controlUrl-only configs won't have them.
+     */
+    ensureEventSubscription() {
+        if (!this.eventHandlers) {
+            return;
+        }
+        if (!this.avTransportEventUrl && !this.renderingControlEventUrl) {
+            return;
+        }
+        if (!this.eventSubscriber) {
+            this.eventSubscriber = new eventSubscriber_js_1.DlnaEventSubscriber(0, this.eventCallbackHost, this.eventHandlers, {
+                logger: this.log,
+            });
+        }
+        void this.eventSubscriber.start({
+            avTransportEventUrl: this.avTransportEventUrl,
+            renderingControlEventUrl: this.renderingControlEventUrl,
+        });
+    }
+}
+exports.DlnaControlPoint = DlnaControlPoint;
+/**
+ * Pull the MIME types out of a GetProtocolInfo response's `Sink`.
+ *
+ * The list is comma-separated protocolInfo entries, each `protocol:network:mime:additional` — so the
+ * third colon-separated field is the format. Entries a renderer publishes for other protocols
+ * (rtsp-rtp-udp, internal) keep their own MIME field, which is why the whole field is taken rather
+ * than a substring match on the raw string: `audio/flac` must not be found inside
+ * `application/x-flac-container`.
+ */
+function parseSinkContentTypes(soapResponse) {
+    const sink = /<Sink>([\s\S]*?)<\/Sink>/i.exec(soapResponse)?.[1];
+    if (!sink) {
+        return null;
+    }
+    const decoded = sink
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"');
+    const types = new Set();
+    for (const entry of decoded.split(',')) {
+        const fields = entry.trim().split(':');
+        const mime = fields[2]?.trim().toLowerCase();
+        if (mime && mime.includes('/')) {
+            types.add(mime);
+        }
+    }
+    return types.size ? [...types] : null;
+}

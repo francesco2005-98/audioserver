@@ -1,0 +1,1 @@
+{"version":3,"file":"peer-compat.d.ts","sourceRoot":"","sources":["../../src/server/peer-compat.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,aAAa,CAAC;AAC3C,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,aAAa,CAAC;AA4D9C;;;GAGG;AACH,wBAAgB,uBAAuB,CAAC,UAAU,EAAE,UAAU,GAAG,IAAI,GAAG,SAAS,GAAG,WAAW,CAAC,YAAY,CAAC,CAQ5G"}
