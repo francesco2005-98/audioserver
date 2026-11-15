@@ -34,9 +34,13 @@ export function SpotifyAccountRow(props: Props): React.ReactElement {
   const state = ((): { text: string; tone: 'ok' | 'warn' | 'wait' } => {
     if (waiting) {
       return {
-        text: t('content.spotify.playback.waiting', {
-          device: status?.pairing?.deviceName ?? t('content.spotify.playback.thisServer'),
-        }),
+        text:
+          t('content.spotify.playback.waiting', {
+            device: status?.pairing?.deviceName ?? t('content.spotify.playback.thisServer'),
+          }) +
+          (status?.pairing?.notice === 'virtual_networks'
+            ? ` ${t('content.spotify.playback.virtualNetworks')}`
+            : ''),
         tone: 'wait',
       };
     }
@@ -45,7 +49,9 @@ export function SpotifyAccountRow(props: Props): React.ReactElement {
         text:
           status?.pairing?.error === 'wrong_account'
             ? t('content.spotify.playback.wrongAccount', { user: status?.pairing?.username ?? '' })
-            : t('content.spotify.playback.notPicked'),
+            : status?.pairing?.error === 'discovery_busy'
+              ? t('content.spotify.playback.discoveryBusy')
+              : t('content.spotify.playback.notPicked'),
         tone: 'warn',
       };
     }

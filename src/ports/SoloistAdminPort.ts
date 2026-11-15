@@ -28,6 +28,13 @@ export type SoloistPairingState = {
   /** Whom the store ended up signed in as, as Spotify spells it. */
   username?: string;
   error?: string;
+  /**
+   * Something that does not stop the attempt, but explains why a phone may still not see it.
+   *
+   * `virtual_networks` means this machine also has container bridges. Soloist has no way to
+   * pick the LAN address, so it can announce one of those instead.
+   */
+  notice?: 'virtual_networks';
 };
 
 export type SoloistPairingRequest = {

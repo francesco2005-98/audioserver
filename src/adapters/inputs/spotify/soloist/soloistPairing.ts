@@ -1,6 +1,8 @@
 import type { SoloistPairingState } from '@/ports/SoloistAdminPort';
 import { createLogger } from '@/shared/logging/logger';
+import dgram from 'node:dgram';
 import fsp from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import {
   accountPairingStore,
@@ -99,6 +101,19 @@ export async function startAccountPairing(params: {
   pairingByAccount.set(accountId, entry);
   log.info('soloist account pairing started', { accountId, deviceName, timeoutMs });
 
+  // Soloist announces the device over mDNS on UDP 5353. When that port is already
+  // taken it still looks like it is waiting, and the phone never sees anything.
+  if (pairingSeesVirtualNetworks()) {
+    entry.notice = 'virtual_networks';
+    log.warn('soloist may announce a container address instead of the LAN', { accountId });
+  }
+  if (!(await discoveryPortFree())) {
+    settle(entry, 'failed');
+    entry.error = 'discovery_busy';
+    log.warn('soloist cannot advertise: udp 5353 is already in use', { accountId });
+    return pairingSnapshot(accountId) as SoloistPairingState;
+  }
+
   // A directory left behind by an attempt nobody finished has a device identity of its own and a
   // lock that may still be held; the next attempt starts from nothing.
   await fsp.rm(path.dirname(store.data), { recursive: true, force: true }).catch(() => undefined);
@@ -159,6 +174,43 @@ export async function startAccountPairing(params: {
   });
 
   return pairingSnapshot(accountId) as SoloistPairingState;
+}
+
+// Same set the serial resolver skips: bridges and container links, plus the
+// link-local p2p interfaces Soloist has been seen to announce instead of the LAN.
+const VIRTUAL_INTERFACE =
+  /^(docker|br-|veth|virbr|cni|flannel|cali|vxlan|tun|tap|wg|zt|tailscale|lxc|podman|p2p)/i;
+
+/** True when this machine has a container or bridge interface Soloist might announce. */
+export function pairingSeesVirtualNetworks(): boolean {
+  try {
+    return Object.keys(networkInterfaces()).some((name) => VIRTUAL_INTERFACE.test(name));
+  } catch {
+    return false;
+  }
+}
+
+/** True when nothing else owns the mDNS port Soloist needs in order to be seen. */
+export function discoveryPortFree(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket({ type: 'udp4' });
+    let settled = false;
+    const done = (free: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(free);
+    };
+    // The port has to be free again before Soloist starts, so the answer waits for the close.
+    socket.once('error', (error: NodeJS.ErrnoException) => done(error.code !== 'EADDRINUSE'));
+    socket.once('listening', () => {
+      socket.close(() => done(true));
+    });
+    try {
+      socket.bind(5353);
+    } catch {
+      done(false);
+    }
+  });
 }
 
 /** Spotify ids are matched without regard to case, and `ü` is `ü` however it was composed. */

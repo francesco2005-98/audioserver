@@ -260,6 +260,7 @@ export type SoloistPairing = {
   expiresAt?: number;
   username?: string;
   error?: string;
+  notice?: 'virtual_networks';
 };
 
 export type SoloistStatus = {

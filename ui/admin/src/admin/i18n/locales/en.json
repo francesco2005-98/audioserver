@@ -496,9 +496,11 @@
       "playback": {
         "ready": "Can browse and play in your rooms.",
         "browseOnly": "Can browse, but cannot play yet — sign in once from your Spotify app.",
-        "waiting": "Waiting — open Spotify on your phone and pick “{{device}}” from the device list.",
+        "waiting": "Waiting — start a song in the Spotify app, tap the speaker icon at the bottom and pick “{{device}}”. Not Settings → Devices: that list only shows devices already signed in. The phone has to be on the same network, and the entry is only there while this says Waiting.",
         "thisServer": "this server",
-        "notPicked": "Nobody picked it in time. Try again and pick it from the device list in Spotify.",
+        "notPicked": "Nobody picked it in time. Start a song, tap the speaker icon and pick it there — not under Settings → Devices.",
+        "discoveryBusy": "The device cannot appear: network discovery (port 5353) is already taken on this machine, usually by Avahi or a second Spotify player.",
+        "virtualNetworks": "This machine also has Docker networks. Soloist then often announces an internal address, and the phone never sees the entry. The phone has to be on the same network as the address in the address bar.",
         "wrongAccount": "Signed in as {{user}} — that is a different Spotify account. Sign in again from the right one.",
         "needsKey": "Nothing can play yet: the player has no Soloist key — add one above.",
         "needsProgram": "Nothing can play yet: the Soloist program is missing — install it above.",

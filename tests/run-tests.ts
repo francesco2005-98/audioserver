@@ -214,6 +214,7 @@ import './loxoneZoneProjection.test';
 import './loxoneConnection.test';
 import './timezone.test';
 import './spotifyRedirect.test';
+import './soloistDiscovery.test';
 import './adminZoneStates.test';
 import './adminInfo.test';
 import './bundleCompat.test';

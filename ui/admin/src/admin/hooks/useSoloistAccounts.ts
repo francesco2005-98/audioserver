@@ -132,9 +132,11 @@ export function useSoloistAccounts(enabled: boolean): SoloistAccounts {
                 account: account.label,
                 user: account.pairing?.username ?? '',
               })
-              : t('content.spotify.playback.toastNotPicked', {
-                device: account.pairing?.deviceName ?? '',
-              }),
+              : account.pairing?.error === 'discovery_busy'
+                ? t('content.spotify.playback.discoveryBusy')
+                : t('content.spotify.playback.toastNotPicked', {
+                  device: account.pairing?.deviceName ?? '',
+                }),
         });
       }
     }
