@@ -18,7 +18,7 @@ export function nodeVersionProblem(version: string = process.versions.node): str
   const major = Number.parseInt(version.split('.')[0] ?? '', 10);
   if (!Number.isFinite(major) || major >= MIN_NODE_MAJOR) return null;
   return [
-    `audioserver core needs Node ${MIN_NODE_MAJOR} or newer, and this is Node ${version}.`,
+    `Audioserver needs Node ${MIN_NODE_MAJOR} or newer, and this is Node ${version}.`,
     'Native modules here are built for node-api 10 (Node 22+); on an older runtime they',
     'segfault during garbage collection instead of reporting anything. Install a supported',
     'Node and reinstall dependencies (npm ci) before running again.',

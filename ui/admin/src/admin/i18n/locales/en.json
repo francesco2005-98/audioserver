@@ -3,6 +3,7 @@
     "dismiss": "Dismiss"
   },
   "buildNotice": {
+    "release": "Initial Release v1.0.0",
     "title": "Not a release.",
     "message": "This build is for testing a specific fix or feature. Do not run it on a system you rely on — install a release instead."
   },

@@ -3,6 +3,7 @@
     "dismiss": "Schließen"
   },
   "buildNotice": {
+    "release": "Initial Release v1.0.0",
     "title": "Kein Release.",
     "message": "Dieser Build dient zum Testen einer bestimmten Korrektur oder Funktion. Nutzen Sie ihn nicht auf einem System, auf das Sie angewiesen sind — installieren Sie stattdessen ein Release."
   },

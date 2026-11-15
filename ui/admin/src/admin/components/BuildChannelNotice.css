@@ -26,6 +26,16 @@
   backdrop-filter: blur(8px);
 }
 
+.build-notice--release {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent)
+  );
+  border-bottom-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--accent);
+}
+
 .build-notice__icon {
   flex-shrink: 0;
   display: flex;

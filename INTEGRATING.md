@@ -3,7 +3,7 @@
 > This file is the public API's single source of truth, kept next to the code it describes.
 
 
-How to read and control audioserver core from your own software — a home-automation system, a
+How to read and control Audioserver from your own software — a home-automation system, a
 script, a wall display, a plugin.
 
 The API below is the server's own: versioned in the path, additive within a version,
@@ -689,7 +689,7 @@ curl -X POST http://server:7090/api/v1/zones/3/handoff \
 ### Audioservers
 
 `GET /api/v1/audio-servers` lists the audioservers known from the installation configuration.
-`selfId` is the MAC id of the current server. Each entry identifies whether it is a audioserver core or
+`selfId` is the MAC id of the current server. Each entry identifies whether it is this Audioserver or
 a regular Loxone audioserver. This is a discovery resource, not a playback target: use
 `/destinations` and `/zones` for audio routing.
 

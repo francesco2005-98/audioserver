@@ -23,6 +23,17 @@ export default function BuildChannelNotice({
 }): JSX.Element | null {
   const { t } = useTranslation();
   const channel = apiStatus?.buildChannel;
+  const version = apiStatus?.version ?? '';
+  const releaseVersion = version.split('+')[0] ?? '';
+
+  // The first stable cut names itself. A later version does not keep this line.
+  if (releaseVersion === '1.0.0') {
+    return (
+      <div className="build-notice build-notice--release" role="status">
+        <span className="build-notice__label">{t('buildNotice.release')}</span>
+      </div>
+    );
+  }
 
   // Absent while the first status request is still in flight. Staying quiet until
   // it lands avoids a warning that flashes up on every load of a real release.
@@ -30,10 +41,9 @@ export default function BuildChannelNotice({
     return null;
   }
 
-  const version = apiStatus?.version ?? '';
-  // A finished version is a release. The banner only belongs on a build that
-  // still says so in the version itself (for example 1.0.0-beta.1).
-  if (!version.split('+')[0]?.includes('-')) {
+  // A finished version is a release. The warning only belongs on a build that
+  // still says so in the version itself (for example 1.0.1-beta.1).
+  if (!releaseVersion.includes('-')) {
     return null;
   }
 

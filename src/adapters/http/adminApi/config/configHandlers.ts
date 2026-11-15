@@ -225,11 +225,11 @@ async function handleZonesUpdate(
   deps.sendJson(res, 204, {});
 }
 
-/** Unique default name for a standalone server, derived from its macId (e.g. "audioserver core 0E5497"). */
+/** Unique default name for a standalone server, derived from its macId (e.g. "Audioserver 0E5497"). */
 function standaloneDefaultName(macId: string | undefined): string {
   const hex = (macId ?? '').replace(/[^0-9a-fA-F]/g, '');
   const suffix = hex.slice(-6).toUpperCase() || 'SETUP';
-  return `audioserver core ${suffix}`;
+  return `Audioserver ${suffix}`;
 }
 
 /** Default volumes for a freshly created zone (mirrors the Loxone extractor). */
