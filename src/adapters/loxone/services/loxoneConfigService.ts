@@ -215,12 +215,27 @@ export class LoxoneConfigService {
   }
 
   private async applySystemMetadata(cfg: AudioServerConfig, parsed: unknown): Promise<void> {
-    const macId = cfg.system.audioserver.macId?.trim().toUpperCase();
-    if (!macId) {
-      return;
+    let macId = cfg.system.audioserver.macId?.trim().toUpperCase();
+    const serials = this.serverSerials(parsed);
+    let section = macId ? this.findServerSection(parsed, macId) : undefined;
+    // The Miniserver only pushes to the box it means. A single section under a
+    // different serial is this server under the serial Loxone Config carries,
+    // typically one left over from a previous installation.
+    if (!section && serials.length === 1 && serials[0]) {
+      this.log.warn('miniserver config is for another serial; adopting it', {
+        serial: macId ?? null,
+        adopted: serials[0],
+      });
+      macId = serials[0];
+      cfg.system.audioserver.macId = macId;
+      section = this.findServerSection(parsed, macId);
     }
-    const section = this.findServerSection(parsed, macId);
-    if (!section) {
+    this.log.info('miniserver config received', {
+      serial: macId ?? null,
+      matched: Boolean(section),
+      serials,
+    });
+    if (!macId || !section) {
       return;
     }
 
@@ -322,6 +337,25 @@ export class LoxoneConfigService {
     } catch {
       return undefined;
     }
+  }
+
+  private serverSerials(parsed: unknown): string[] {
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const serials = new Set<string>();
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+        const serial = key.trim().toUpperCase();
+        if (/^[0-9A-F]{12}$/.test(serial) && value && typeof value === 'object') {
+          serials.add(serial);
+        }
+      }
+    }
+    return [...serials];
   }
 
   private findServerSection(parsed: unknown, macId: string): any | undefined {

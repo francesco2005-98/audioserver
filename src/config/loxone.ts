@@ -108,6 +108,19 @@ function buildLoxoneMdnsConfig(env: EnvironmentConfig): LoxoneMdnsConfig {
   };
 }
 
+/**
+ * The greeting for one listener with the serial the server carries right now.
+ * The serial can change at runtime, and the Miniserver matches it against Loxone Config.
+ */
+export function loxoneIdentification(
+  config: LoxoneHttpConfig,
+  name: LoxoneServerName,
+  mac: string | null | undefined,
+): string {
+  const serial = mac?.trim().toUpperCase() || config.macAddress;
+  return formatIdentification(name, config.firmwareVersion, config.apiVersion, serial, config.sessionToken);
+}
+
 function formatIdentification(
   name: LoxoneServerName,
   firmware: string,

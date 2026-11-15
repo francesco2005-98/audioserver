@@ -75,6 +75,7 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
     ),
     getConfig: handler((command) => {
       const info = configService.getCurrentConfigInfo();
+      log.info('miniserver asked for the stored config', { crc32: info.crc32 ?? null });
       return buildEmptyResponseWithPayload(command, {
         crc32: info.crc32 ?? null,
         extensions: info.extensions ?? [],
@@ -90,7 +91,7 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
     ),
     identify: handler((command) =>
       buildEmptyResponseWithPayload(command, {
-        mac: config.macAddress,
+        mac: configPort.getSystemConfig()?.audioserver?.macId?.trim().toUpperCase() || config.macAddress,
         services: [],
       }),
     ),
@@ -126,9 +127,16 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
         });
       }
 
-      const decoded = decodeBase64Segment(decodeURIComponent(encoded));
+      let segment = encoded;
+      try {
+        segment = decodeURIComponent(encoded);
+      } catch {
+        segment = encoded;
+      }
+      const decoded = decodeBase64Segment(segment);
       const parsed = safeJsonParse<unknown>(decoded);
       if (!parsed) {
+        log.warn('miniserver config could not be read', { length: encoded.length });
         return buildResponse(command, 'setconfig', {
           success: false,
           error: 'invalid-config',

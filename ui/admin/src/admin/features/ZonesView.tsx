@@ -3,7 +3,13 @@ import { createPortal } from 'react-dom';
 import { useTranslation, Trans } from 'react-i18next';
 import './ZonesView.css';
 import { fetchSoloistStatus } from '../services/contentApi';
-import { getConfig, updateGroupsConfig, updateManagedPlayers, setLoxoneConnection } from '../services/setupApi';
+import {
+  getConfig,
+  updateAudioServerMacId,
+  updateGroupsConfig,
+  updateManagedPlayers,
+  setLoxoneConnection,
+} from '../services/setupApi';
 import {
   createZone,
   deleteZone,
@@ -200,6 +206,8 @@ export default function ZonesView(): JSX.Element {
   const [managedSaving, setManagedSaving] = React.useState(false);
   const [loxoneModalOpen, setLoxoneModalOpen] = React.useState(false);
   const [loxoneBusy, setLoxoneBusy] = React.useState(false);
+  const [serialDraft, setSerialDraft] = React.useState('');
+  const [serialSaving, setSerialSaving] = React.useState(false);
   const [addZoneOpen, setAddZoneOpen] = React.useState(false);
   const [newZoneName, setNewZoneName] = React.useState('');
   const [addingZone, setAddingZone] = React.useState(false);
@@ -613,6 +621,37 @@ export default function ZonesView(): JSX.Element {
       });
     } finally {
       setLoxoneBusy(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (loxoneModalOpen) setSerialDraft(formatSerial(baseSerial) || baseSerial);
+  }, [loxoneModalOpen, baseSerial]);
+
+  const serialNormalized = serialDraft.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  const serialValid = serialNormalized.length === 12;
+  const serialChanged = serialValid && serialNormalized !== baseSerial;
+
+  // The Miniserver only sends its project to the serial stored in Loxone Config.
+  // A Miniserver already connected sees the new serial on its next connection.
+  async function saveSerial(): Promise<void> {
+    if (!serialChanged || serialSaving) return;
+    setSerialSaving(true);
+    try {
+      await updateAudioServerMacId(serialNormalized);
+      if (!standalone) {
+        await setLoxoneConnection(false);
+        await setLoxoneConnection(true);
+      }
+      await refreshZones();
+    } catch (err) {
+      pushAlert({
+        tone: 'error',
+        title: t('zones.loxone.serialFailedTitle'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSerialSaving(false);
     }
   }
 
@@ -1462,16 +1501,42 @@ export default function ZonesView(): JSX.Element {
         </p>
 
         {standalone || !paired ? (
-          <dl className="zones-loxone-modal__facts">
-            <div>
-              <dt>{t('zones.loxone.serial')}</dt>
-              <dd>{baseSerial || '—'}</dd>
-            </div>
-            <div>
-              <dt>{t('zones.loxone.host')}</dt>
-              <dd>{typeof window !== 'undefined' ? window.location.host || '—' : '—'}</dd>
-            </div>
-          </dl>
+          <>
+            <dl className="zones-loxone-modal__facts">
+              <div>
+                <dt>{t('zones.loxone.serial')}</dt>
+                <dd>{formatSerial(baseSerial) || baseSerial || '—'}</dd>
+              </div>
+              <div>
+                <dt>{t('zones.loxone.host')}</dt>
+                <dd>{typeof window !== 'undefined' ? window.location.hostname || '—' : '—'}</dd>
+              </div>
+            </dl>
+            <label className="zones-loxone-modal__serial">
+              <span>{t('zones.loxone.serialEdit')}</span>
+              <div className="zones-loxone-modal__serial-row">
+                <input
+                  className="zones-add-modal__input"
+                  value={serialDraft}
+                  spellCheck={false}
+                  autoComplete="off"
+                  maxLength={17}
+                  onChange={(e) => setSerialDraft(e.target.value)}
+                  disabled={serialSaving || loxoneBusy}
+                  aria-invalid={serialDraft.length > 0 && !serialValid}
+                />
+                <button
+                  type="button"
+                  className="zones-modal__btn"
+                  onClick={() => void saveSerial()}
+                  disabled={!serialChanged || serialSaving || loxoneBusy}
+                >
+                  {serialSaving ? t('zones.loxone.serialSaving') : t('zones.loxone.serialSave')}
+                </button>
+              </div>
+              <small>{t('zones.loxone.serialHint')}</small>
+            </label>
+          </>
         ) : null}
 
         {!standalone && !paired ? (

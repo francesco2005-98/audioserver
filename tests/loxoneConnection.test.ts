@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from './testHarness';
 import { loadEnvironment } from '../src/config/environment';
-import { buildLoxoneHttpConfig } from '../src/config/loxone';
+import { buildLoxoneHttpConfig, loxoneIdentification } from '../src/config/loxone';
+import { LoxoneConfigService } from '../src/adapters/loxone/services/loxoneConfigService';
 import {
   buildLoxoneDiscoveryPayload,
   loxoneDiscoveryFields,
@@ -29,7 +30,7 @@ test('the Miniserver port greets as a Miniserver and Bonjour keeps its own versi
   assert.equal(config.mdns.deviceInstance, '2');
 });
 
-test('the Loxone search answer follows the current name and a unique hostname', () => {
+test('the Loxone search answer follows the current name and serial', () => {
   const port = (name: string, mac = '504F94FF1BB3'): ConfigPort =>
     ({
       getSystemConfig: () => ({ audioserver: { name, macId: mac } }),
@@ -118,7 +119,7 @@ test('the secure handshake echoes the client key and stays ready to pair', async
   assert.equal(claims.session_token, config.sessionToken);
 });
 
-test('the hardware heartbeat stays quiet until paired and then repeats', async () => {
+test('the hardware heartbeat stays quiet until paired', () => {
   const sent: string[] = [];
   const registry = {
     broadcastMessage(payload: string) {
@@ -131,14 +132,82 @@ test('the hardware heartbeat stays quiet until paired and then repeats', async (
       audioserver: { paired, macId: '504F94FF1BB3', extensions: [] },
     }),
   } as unknown as ConfigPort;
-  const heartbeat = new ServerHeartbeat(registry, 30);
+  const heartbeat = new ServerHeartbeat(registry);
   heartbeat.emit(configPort);
   assert.equal(sent.length, 0);
   paired = true;
-  heartbeat.start(configPort);
-  await new Promise((resolve) => setTimeout(resolve, 80));
-  heartbeat.stop();
-  assert.ok(sent.length >= 2);
+  heartbeat.emit(configPort);
+  assert.equal(sent.length, 1);
   const event = JSON.parse(sent[0] ?? '{}') as { hw_event: Array<{ client_id: string }> };
   assert.equal(event.hw_event[0]?.client_id, '504F94FF1BB3#1');
+});
+
+test('the Miniserver greeting carries the serial the server holds now', () => {
+  assert.match(
+    loxoneIdentification(config, 'msHttp', 'bc241107fd5b'),
+    /^MINISERVER V LWSS V 17\.1\.05\.05 BC241107FD5B \| /,
+  );
+  assert.match(loxoneIdentification(config, 'msHttp', ''), / 504F94FF1BB3 \| /);
+  assert.match(loxoneIdentification(config, 'appHttp', 'BC241107FD5B'), /^LWSS V 17\.1\.05\.05 \| /);
+});
+
+function fakeConfigStore(initial: AudioServerConfig): ConfigPort {
+  const state = initial;
+  return {
+    getConfig: () => state,
+    getSystemConfig: () => state.system,
+    async updateConfig(mutator: (cfg: AudioServerConfig) => void | Promise<void>) {
+      await mutator(state);
+    },
+  } as unknown as ConfigPort;
+}
+
+function pairingConfig(macId: string): AudioServerConfig {
+  return {
+    system: {
+      miniserver: { ip: '', serial: '', port: 80, protocol: 'http' },
+      audioserver: { macId, name: 'Unconfigured', uuid: '', paired: false, extensions: [] },
+    },
+    rawAudioConfig: { raw: null, rawString: '', crc32: null },
+    zones: [],
+    inputs: {},
+    groups: { mixedGroupEnabled: false, powerGroups: [], audioGroups: [] },
+  } as unknown as AudioServerConfig;
+}
+
+const zonesStub = { replaceAll: async () => undefined } as never;
+const contentStub = { refreshFromConfig: () => undefined } as never;
+
+test('a pushed project for the stored serial pairs the server', async () => {
+  const store = fakeConfigStore(pairingConfig('504F94FF1BB3'));
+  const service = new LoxoneConfigService(zonesStub, store, contentStub, {} as never);
+  const project = [{ '504F94FF1BB3': { name: 'Wohnzimmer', uuid: 'uuid-1', players: [] } }];
+  await service.setRawAudioConfig({ raw: project, rawString: JSON.stringify(project) });
+  const system = store.getSystemConfig();
+  assert.equal(system.audioserver.paired, true);
+  assert.equal(system.audioserver.name, 'Wohnzimmer');
+  assert.equal(system.audioserver.uuid, 'uuid-1');
+});
+
+test('a project pushed under the serial of an earlier installation is taken over', async () => {
+  const store = fakeConfigStore(pairingConfig('0242AC110002'));
+  const service = new LoxoneConfigService(zonesStub, store, contentStub, {} as never);
+  const project = [{ BC241107FD5B: { name: 'Audioserver', uuid: 'uuid-2', players: [] } }];
+  await service.setRawAudioConfig({ raw: project, rawString: JSON.stringify(project) });
+  const system = store.getSystemConfig();
+  assert.equal(system.audioserver.macId, 'BC241107FD5B');
+  assert.equal(system.audioserver.paired, true);
+});
+
+test('a project for several other audioservers is not claimed', async () => {
+  const store = fakeConfigStore(pairingConfig('0242AC110002'));
+  const service = new LoxoneConfigService(zonesStub, store, contentStub, {} as never);
+  const project = [
+    { BC241107FD5B: { name: 'Erdgeschoss', players: [] } },
+    { BC241107FD5C: { name: 'Obergeschoss', players: [] } },
+  ];
+  await service.setRawAudioConfig({ raw: project, rawString: JSON.stringify(project) });
+  const system = store.getSystemConfig();
+  assert.equal(system.audioserver.macId, '0242AC110002');
+  assert.equal(system.audioserver.paired, false);
 });

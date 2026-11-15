@@ -1327,7 +1327,12 @@
       "step1": "Add the AudioServer in Loxone Config using the serial and host above.",
       "step2": "Split the stereo outputs into 4 zones and drag them into your project.",
       "step3": "Deploy the changes and reboot the Miniserver to start pairing.",
-      "failedTitle": "Could not update the Loxone connection"
+      "failedTitle": "Could not update the Loxone connection",
+      "serialEdit": "Serial in Loxone Config",
+      "serialSave": "Apply",
+      "serialSaving": "Applying…",
+      "serialHint": "Must be exactly the serial of the Audioserver in Loxone Config. Coming from an earlier installation, enter its serial here and reboot the Miniserver.",
+      "serialFailedTitle": "Could not change the serial"
     },
     "add": {
       "button": "Add zone",

@@ -4944,6 +4944,32 @@ button.zones-hub__toggle:disabled {
   font-family: var(--font-mono, ui-monospace, monospace);
   word-break: break-all;
 }
+.zones-loxone-modal__serial {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 16px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.zones-loxone-modal__serial > span {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.zones-loxone-modal__serial-row {
+  display: flex;
+  gap: 8px;
+}
+.zones-loxone-modal__serial-row .zones-add-modal__input {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+}
+.zones-loxone-modal__serial small {
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
 .zones-loxone-modal__steps {
   margin: 0 0 16px;
   padding-left: 18px;

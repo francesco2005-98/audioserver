@@ -599,8 +599,6 @@ export function createRuntime(): Runtime {
         contentManager,
         onConfigured: () => {
           serverHeartbeat.emit(configPort);
-          loxoneService?.refreshAnnouncement();
-          void notifyMiniserverStartup(configPort.getConfig());
         },
       });
     }
@@ -621,7 +619,6 @@ export function createRuntime(): Runtime {
         zoneManager,
         configPort,
         groupSync: groupManager,
-        mdns: mdnsService,
       });
       loxoneService = service;
       try {

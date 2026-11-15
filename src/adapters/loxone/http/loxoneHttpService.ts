@@ -8,7 +8,7 @@ import {
   server as WebSocketServer,
 } from 'websocket';
 import { createLogger } from '@/shared/logging/logger';
-import type { LoxoneHttpConfig } from '@/config/loxone';
+import { loxoneIdentification, type LoxoneHttpConfig } from '@/config/loxone';
 import { LoxoneCommandProcessor } from '@/adapters/loxone/http/commandProcessor';
 import { LoxoneUdpDiscovery } from '@/adapters/loxone/http/loxoneUdpDiscovery';
 import { createDualProtocolServer } from '@/adapters/loxone/http/protocolDispatcher';
@@ -17,11 +17,11 @@ import type { LoxoneServerOptions } from '@/adapters/loxone/http/types';
 import { formatCommand } from '@/adapters/loxone/commands/utils/commandFormatter';
 import type { ConnectionRegistry } from '@/adapters/loxone/ws/connectionRegistry';
 import type { ServerHeartbeat } from '@/adapters/loxone/ws/serverHeartbeat';
-import { LoxoneMdnsAdvertiser } from '@/adapters/loxone/http/loxoneMdnsAdvertiser';
-import type { MdnsPort } from '@/ports/MdnsPort';
 import type { LoxoneWsNotifier } from '@/adapters/loxone/ws/notifier';
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { ConfigPort } from '@/ports/ConfigPort';
+
+const LOXONE_MAX_COMMAND_BYTES = 16 * 1024 * 1024;
 
 interface ServerRuntime {
   definition: LoxoneServerOptions;
@@ -45,8 +45,6 @@ export interface LoxoneHttpServiceOptions {
   configPort: ConfigPort;
   /** Pushes the current group list. The boot restore broadcasts before any client exists. */
   groupSync?: { broadcastGroupState: () => void };
-  /** Bonjour for clients that look the Audioserver up by name. */
-  mdns?: MdnsPort;
 }
 
 /**
@@ -57,14 +55,12 @@ export class LoxoneHttpService {
   private readonly processor: LoxoneCommandProcessor;
   private readonly servers: ServerRuntime[] = [];
   private readonly udpDiscovery = new LoxoneUdpDiscovery();
-  private readonly mdnsAdvertiser: LoxoneMdnsAdvertiser | null;
 
   constructor(
     private readonly config: LoxoneHttpConfig,
     private readonly options: LoxoneHttpServiceOptions,
   ) {
     this.processor = options.processor;
-    this.mdnsAdvertiser = options.mdns ? new LoxoneMdnsAdvertiser(options.mdns) : null;
   }
 
   public async start(): Promise<void> {
@@ -76,18 +72,15 @@ export class LoxoneHttpService {
     }
 
     this.udpDiscovery.start(this.config, this.options.configPort);
-    this.refreshAnnouncement();
-    this.options.serverHeartbeat.start(this.options.configPort);
 
     this.log.info('loxone servers ready', {
       ports: this.config.servers.map((s) => s.port).join(', '),
       tls: tls ? 'enabled' : 'disabled',
+      serial: this.currentSerial(),
     });
   }
 
   public async stop(): Promise<void> {
-    this.options.serverHeartbeat.stop();
-    this.mdnsAdvertiser?.stop();
     this.udpDiscovery.stop();
     const runtimes = [...this.servers];
     this.servers.length = 0;
@@ -126,9 +119,14 @@ export class LoxoneHttpService {
       });
     };
 
-    const httpServer = http.createServer(requestListener);
+    // The project arrives as one base64 command. Node's 16 KB header limit and the
+    // WebSocket library's 64 KB frame limit both cut it off on a real installation.
+    const httpServer = http.createServer({ maxHeaderSize: LOXONE_MAX_COMMAND_BYTES }, requestListener);
     const httpsServer = tlsContext
-      ? https.createServer({ cert: tlsContext.cert, key: tlsContext.key }, requestListener)
+      ? https.createServer(
+          { cert: tlsContext.cert, key: tlsContext.key, maxHeaderSize: LOXONE_MAX_COMMAND_BYTES },
+          requestListener,
+        )
       : null;
     const listener = createDualProtocolServer(httpServer, httpsServer);
 
@@ -138,6 +136,8 @@ export class LoxoneHttpService {
     const wsServer = new WebSocketServer({
       httpServer: wsTargets,
       autoAcceptConnections: true,
+      maxReceivedFrameSize: LOXONE_MAX_COMMAND_BYTES,
+      maxReceivedMessageSize: LOXONE_MAX_COMMAND_BYTES,
     });
 
     wsServer.on('connect', (connection) =>
@@ -168,9 +168,9 @@ export class LoxoneHttpService {
     });
   }
 
-  /** Republish Bonjour after a rename. The UDP answer is rebuilt on each probe. */
-  public refreshAnnouncement(): void {
-    this.mdnsAdvertiser?.publish(this.config, this.options.configPort);
+  private currentSerial(): string {
+    const stored = this.options.configPort.getSystemConfig()?.audioserver?.macId;
+    return stored?.trim().toUpperCase() || this.config.macAddress;
   }
 
   private async handleHttp(
@@ -206,11 +206,16 @@ export class LoxoneHttpService {
     definition: LoxoneServerOptions,
     connection: WebSocketConnection,
   ): void {
-    connection.sendUTF(definition.identification);
+    const serial = this.currentSerial();
+    connection.sendUTF(loxoneIdentification(this.config, definition.name, serial));
     this.options.connectionRegistry.registerConnection(connection);
-    // The search answer names the app port. A Miniserver that connects there
-    // must see the same hardware event as one that connects to the other port.
-    this.options.serverHeartbeat.emit(this.options.configPort);
+    if (definition.name === 'msHttp') {
+      this.log.info('miniserver connected', {
+        remote: connection.socket.remoteAddress,
+        serial,
+      });
+      this.options.serverHeartbeat.emit(this.options.configPort);
+    }
 
     // A client sees nothing until something changes, and an idle zone never
     // changes — so send the current state of every zone on connect. It goes
