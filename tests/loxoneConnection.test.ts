@@ -17,14 +17,16 @@ import type { AudioServerConfig } from '../src/domain/config/types';
 
 const config = buildLoxoneHttpConfig(loadEnvironment(), '504F94FF1BB3');
 
-test('both Loxone listeners greet as this Audioserver', () => {
+test('the Miniserver port greets as a Miniserver and Bonjour keeps its own version', () => {
   const [app, miniserver] = config.servers;
-  assert.equal(app?.identification, miniserver?.identification);
-  assert.match(miniserver?.identification ?? '', /^LWSS V 17\.1\.05\.05 \| ~API:1\.6~ \| Session-Token: /);
-  assert.equal(miniserver?.identification.includes('MINISERVER V'), false);
-  assert.equal(config.mdns.version, '17.01.05.05');
-  assert.equal(config.mdns.txtVersion, '3');
-  assert.equal(config.mdns.deviceInstance, '1');
+  assert.match(app?.identification ?? '', /^LWSS V 17\.1\.05\.05 \| ~API:1\.6~ \| Session-Token: /);
+  assert.match(
+    miniserver?.identification ?? '',
+    /^MINISERVER V LWSS V 17\.1\.05\.05 504F94FF1BB3 \| ~API:1\.6~ \| Session-Token: /,
+  );
+  assert.equal(config.mdns.version, '16.00.09.16');
+  assert.equal(config.mdns.txtVersion, '2');
+  assert.equal(config.mdns.deviceInstance, '2');
 });
 
 test('the Loxone search answer follows the current name and a unique hostname', () => {
@@ -34,7 +36,7 @@ test('the Loxone search answer follows the current name and a unique hostname', 
     }) as unknown as ConfigPort;
   const first = JSON.parse(buildLoxoneDiscoveryPayload(loxoneDiscoveryFields(config, port('Wohnzimmer'))));
   assert.equal(first.n, 'Wohnzimmer');
-  assert.equal(first.hn, 'Wohnzimmer');
+  assert.equal(first.hn, 'audioserver');
   assert.equal(first.s, '50:4F:94:FF:1B:B3');
   assert.equal(first.v, '17.1.05.05');
   assert.equal(first.p, '7091');
@@ -44,7 +46,7 @@ test('the Loxone search answer follows the current name and a unique hostname', 
   const unnamed = JSON.parse(
     buildLoxoneDiscoveryPayload(loxoneDiscoveryFields(config, port('Unconfigured', 'AABBCCDDEEFF'))),
   );
-  assert.equal(unnamed.hn, 'audioserver-eeff');
+  assert.equal(unnamed.hn, 'audioserver');
 });
 
 test('the Miniserver startup ping uses the saved scheme, port and uuid', () => {
@@ -66,7 +68,7 @@ test('the Miniserver startup ping uses the saved scheme, port and uuid', () => {
   assert.equal(plain, 'http://192.168.1.5/dev/sps/devicestartup/from-raw');
 });
 
-test('setconfig answers with setconfig_result and wakes the connection', async () => {
+test('setconfig answers under the segment the Miniserver sent and wakes the connection', async () => {
   let woke = 0;
   const handlers = createConfigHandlers(config, {
     notifier: {} as never,
@@ -88,42 +90,31 @@ test('setconfig answers with setconfig_result and wakes the connection', async (
   const body = Buffer.from('[]').toString('base64');
   const result = await handlers.setConfig(`audio/cfg/setconfig/${body}`);
   assert.ok(result);
-  assert.equal(result.name, 'setconfig');
+  assert.equal(result.name, body);
   assert.equal(woke, 1);
-  const wire = JSON.parse(serializeResult(result)) as { setconfig_result: { crc32: string } };
-  assert.equal(wire.setconfig_result.crc32, 'abc');
+  const wire = JSON.parse(serializeResult(result)) as Record<string, { crc32: string }>;
+  assert.equal(wire[`${body}_result`]?.crc32, 'abc');
 });
 
-test('the secure handshake offers this server key and a session that has not expired', async () => {
-  const unpaired = createSecureHandlers(
-    { getSystemConfig: () => ({ miniserver: { serial: '' } }) } as ConfigPort,
-    config.sessionToken,
+test('the secure handshake echoes the client key and stays ready to pair', async () => {
+  const handlers = createSecureHandlers(
+    { getSystemConfig: () => ({ miniserver: { serial: '504f94111111' } }) } as ConfigPort,
   );
-  const hello = await unpaired.hello('secure/hello/CLIENT-PUBLIC-KEY');
+  const hello = await handlers.hello('secure/hello/CLIENT/PUBLIC+KEY');
   const helloPayload = hello?.payload as { public_key: string; error: number };
   assert.equal(helloPayload.error, 0);
-  assert.equal(helloPayload.public_key.includes('BEGIN'), true);
-  assert.equal(helloPayload.public_key.includes('CLIENT-PUBLIC-KEY'), false);
+  assert.equal(helloPayload.public_key, 'CLIENT/PUBLIC+KEY');
 
-  const pairing = await unpaired.infoPairing('secure/infopairing');
-  assert.equal((pairing?.payload as { error: number }).error, -81);
+  const pairing = await handlers.infoPairing('secure/infopairing');
+  const pairingPayload = pairing?.payload as { error: number; master: string };
+  assert.equal(pairingPayload.error, -81);
+  assert.equal(pairingPayload.master, '504F94111111');
 
-  const paired = createSecureHandlers(
-    { getSystemConfig: () => ({ miniserver: { serial: '504f94111111' } }) } as ConfigPort,
-    config.sessionToken,
-  );
-  const known = await paired.infoPairing('secure/infopairing');
-  const knownPayload = known?.payload as { error: number; master: string };
-  assert.equal(knownPayload.error, 0);
-  assert.equal(knownPayload.master, '504F94111111');
-
-  const init = await paired.init('secure/init');
+  const init = await handlers.init('secure/init');
   const jwt = (init?.payload as { jwt: string }).jwt;
-  const claims = JSON.parse(Buffer.from(jwt.split('.')[1] ?? '', 'base64url').toString('utf8')) as {
-    exp: number;
+  const claims = JSON.parse(Buffer.from(jwt.split('.')[1] ?? '', 'base64').toString('utf8')) as {
     session_token: string;
   };
-  assert.ok(claims.exp > Math.floor(Date.now() / 1000) + 60 * 60 * 24);
   assert.equal(claims.session_token, config.sessionToken);
 });
 

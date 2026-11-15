@@ -1,6 +1,6 @@
 /**
- * Name, hostname and MAC shared by the UDP search answer and the Bonjour record.
- * Both have to describe the same box, including after it is renamed.
+ * Name and MAC shared by the UDP search answer and the Bonjour record.
+ * The hostname stays the configured Bonjour host, which is what the Miniserver looks up.
  */
 export function loxoneAnnouncementName(
   configuredName: string | undefined,
@@ -14,17 +14,9 @@ export function loxoneAnnouncementName(
   return fallback || 'audioserver';
 }
 
-export function loxoneAnnouncementHostname(name: string, mac: string): string {
-  const sanitized = sanitizeHostname(name);
-  const generic =
-    !sanitized ||
-    sanitized.toLowerCase() === 'audioserver' ||
-    sanitized.toLowerCase() === 'unconfigured';
-  if (!generic) {
-    return sanitized;
-  }
-  const suffix = mac.replace(/[^a-fA-F0-9]/g, '').slice(-4).toLowerCase();
-  return suffix ? `audioserver-${suffix}` : 'audioserver';
+export function loxoneAnnouncementHostname(configured: string): string {
+  const sanitized = sanitizeHostname(configured);
+  return sanitized || 'audioserver';
 }
 
 export function loxoneAnnouncementMac(raw: string | undefined, fallback: string): string {

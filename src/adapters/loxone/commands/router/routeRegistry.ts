@@ -53,7 +53,7 @@ export function registerRoutes(
   router: LoxoneRouter,
   dependencies: RouteDependencies,
 ): void {
-  const secure = createSecureHandlers(dependencies.configPort, dependencies.config.sessionToken);
+  const secure = createSecureHandlers(dependencies.configPort);
   const placeholder = (name: string) => createPlaceholderHandler(name);
   const configHandlers = createConfigHandlers(dependencies.config, {
     onRestart: dependencies.onRestart,

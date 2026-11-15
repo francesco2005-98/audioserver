@@ -54,7 +54,7 @@ export function loxoneDiscoveryFields(
     mac,
     firmware: config.firmwareVersionNumber,
     port,
-    hostname: loxoneAnnouncementHostname(name, mac),
+    hostname: loxoneAnnouncementHostname(config.mdns.hostname || name),
   };
 }
 
