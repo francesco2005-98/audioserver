@@ -1,7 +1,10 @@
 # Stage 1: Install dependencies and build the project
 FROM node:24-trixie-slim AS builder
 WORKDIR /app
-COPY package*.json ./
+COPY package.json package-lock.json ./
+# file: dependencies are symlinks into this directory. npm ci needs them
+# present, and the runtime stage has to keep the same paths.
+COPY packages ./packages
 
 # Install minimal build tooling (prebuilds should handle most deps on glibc)
 RUN apt-get update \
@@ -92,7 +95,10 @@ EXPOSE 7090 7091 7095
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/package*.json ./
+# node_modules/@audioserver/* are symlinks to /app/packages/*. Copying only
+# node_modules leaves those links dangling, so Node cannot load them.
+COPY --from=builder --chown=node:node /app/packages ./packages
+COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=crelay-builder /usr/local/bin/crelay /usr/local/bin/crelay
 RUN chmod +x /usr/local/bin/crelay \
     && /usr/local/bin/crelay --help >/dev/null || true
