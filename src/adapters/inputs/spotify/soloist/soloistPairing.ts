@@ -1,6 +1,5 @@
 import type { SoloistPairingState } from '@/ports/SoloistAdminPort';
 import { createLogger } from '@/shared/logging/logger';
-import dgram from 'node:dgram';
 import fsp from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
@@ -102,25 +101,45 @@ export async function startAccountPairing(params: {
   pairingByAccount.set(accountId, entry);
   log.info('soloist account pairing started', { accountId, deviceName, timeoutMs });
 
-  // Soloist announces the device over mDNS on UDP 5353. When that port is already
-  // taken it still looks like it is waiting, and the phone never sees anything.
-  // The image filters those addresses out. Warn only when that filter is not
+  // The image filters container addresses out. Warn only when that filter is not
   // there, because then Soloist really can announce the bridge instead of the LAN.
   if (pairingSeesVirtualNetworks() && !ifaceFilterActive()) {
     entry.notice = 'virtual_networks';
     log.warn('soloist may announce a container address instead of the LAN', { accountId });
   }
-  if (!(await discoveryPortFree())) {
-    settle(entry, 'failed');
-    entry.error = 'discovery_busy';
-    log.warn('soloist cannot advertise: udp 5353 is already in use', { accountId });
-    return pairingSnapshot(accountId) as SoloistPairingState;
-  }
 
   // A directory left behind by an attempt nobody finished has a device identity of its own and a
   // lock that may still be held; the next attempt starts from nothing.
   await fsp.rm(path.dirname(store.data), { recursive: true, force: true }).catch(() => undefined);
-  const handle = startPairing({ store, apiKey, deviceName });
+  // This server already listens on UDP 5353 for its own discovery, with the
+  // socket shared. Probing that port exclusively reports it taken and would
+  // refuse a pairing Soloist can still announce. Soloist itself says when the
+  // port is actually closed to it.
+  let mdnsReady = false;
+  let mdnsGaveUp = false;
+  let mdnsTimer: ReturnType<typeof setTimeout> | undefined;
+  const handle = startPairing({
+    store,
+    apiKey,
+    deviceName,
+    onLine: (line) => {
+      const verdict = soloistMdnsLine(line);
+      if (verdict === 'ready') {
+        mdnsReady = true;
+        if (mdnsTimer) clearTimeout(mdnsTimer);
+        mdnsTimer = undefined;
+        return;
+      }
+      if (verdict !== 'blocked' || mdnsReady || mdnsTimer) return;
+      mdnsTimer = setTimeout(() => {
+        if (entry.state !== 'pairing' || mdnsReady) return;
+        mdnsGaveUp = true;
+        log.warn('soloist cannot advertise: mdns init failed', { accountId });
+        entry.handle?.stop();
+      }, 3_000);
+      mdnsTimer.unref?.();
+    },
+  });
   entry.handle = handle;
   const giveUp = setTimeout(() => {
     if (entry.state !== 'pairing') {
@@ -134,6 +153,7 @@ export async function startAccountPairing(params: {
 
   void handle.done.then(async (code) => {
     clearTimeout(giveUp);
+    if (mdnsTimer) clearTimeout(mdnsTimer);
     entry.handle = undefined;
     // The exit code is not the answer — a run told to stop exits the same way a paired one does.
     // What settles it is whether a session is there now, which is the thing being asked for.
@@ -171,6 +191,11 @@ export async function startAccountPairing(params: {
       settle(entry, 'idle');
       return;
     }
+    if (mdnsGaveUp) {
+      settle(entry, 'failed');
+      entry.error = 'discovery_busy';
+      return;
+    }
     settle(entry, 'failed');
     entry.error = handle.fault() ?? (code === null ? 'not_started' : 'no_session');
     log.warn('soloist account pairing produced no session', { accountId, code, error: entry.error });
@@ -193,27 +218,11 @@ export function pairingSeesVirtualNetworks(): boolean {
   }
 }
 
-/** True when nothing else owns the mDNS port Soloist needs in order to be seen. */
-export function discoveryPortFree(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = dgram.createSocket({ type: 'udp4' });
-    let settled = false;
-    const done = (free: boolean): void => {
-      if (settled) return;
-      settled = true;
-      resolve(free);
-    };
-    // The port has to be free again before Soloist starts, so the answer waits for the close.
-    socket.once('error', (error: NodeJS.ErrnoException) => done(error.code !== 'EADDRINUSE'));
-    socket.once('listening', () => {
-      socket.close(() => done(true));
-    });
-    try {
-      socket.bind(5353);
-    } catch {
-      done(false);
-    }
-  });
+/** What Soloist just said about its own announcement, if this line is about that. */
+export function soloistMdnsLine(line: string): 'ready' | 'blocked' | null {
+  if (/mdns created successfully/i.test(line)) return 'ready';
+  if (/Failed to initialize mdns/i.test(line)) return 'blocked';
+  return null;
 }
 
 /** Spotify ids are matched without regard to case, and `ü` is `ü` however it was composed. */
