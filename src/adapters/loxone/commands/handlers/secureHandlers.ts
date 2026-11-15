@@ -8,16 +8,10 @@ import type { ConfigPort } from '@/ports/ConfigPort';
 export function createSecureHandlers(configPort: ConfigPort) {
   return {
     hello: createHandler((command) => {
-      const prefix = 'secure/hello/';
-      const raw = command.startsWith(prefix) ? command.slice(prefix.length) : '';
-      // The key is one path segment and may itself contain slashes. Echo all of it.
-      // Returning this server's own key makes the Miniserver abort the handshake.
-      let publicKey = raw;
-      try {
-        publicKey = decodeURIComponent(raw);
-      } catch {
-        publicKey = raw;
-      }
+      // `secure/hello/<id>/<public key>`: only the key comes back, undecoded. The
+      // Miniserver compares it with what it sent; echoing the id as well ends
+      // pairing right after info/pairing.
+      const [, , , publicKey = ''] = command.split('/');
       return buildResponse(command, 'secure_hello', {
         command: 'secure/hello',
         error: 0,

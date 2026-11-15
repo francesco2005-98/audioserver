@@ -103,7 +103,7 @@ class LoxonePairingMonitor {
     if (port !== 'msHttp' && !PAIRING_COMMAND.test(command)) {
       return;
     }
-    const step = { at: Date.now(), port, remote, command: formatCommand(command.replace(/^\/+/, '')) };
+    const step = { at: Date.now(), port, remote, command: describeCommand(command.replace(/^\/+/, '')) };
     this.state.steps = [...this.state.steps, step].slice(-MAX_STEPS);
     if (port === 'msHttp' || /^\/?secure\//.test(command)) {
       this.state.lastConnection = this.state.lastConnection ?? { at: step.at, port, remote };
@@ -126,6 +126,18 @@ class LoxonePairingMonitor {
   public snapshot(): LoxonePairingSnapshot {
     return structuredClone(this.state);
   }
+}
+
+/** The handshake payloads are secrets, so only their shape is kept: segment lengths and encoding. */
+function describeCommand(command: string): string {
+  const match = /^(secure\/(?:hello|init|authenticate))\/(.+)$/.exec(command);
+  if (!match?.[1] || !match[2]) {
+    return formatCommand(command);
+  }
+  const segments = match[2].split('/');
+  const lengths = segments.map((segment) => segment.length).join('/');
+  const encoded = /%[0-9a-f]{2}/i.test(match[2]) ? ', url-encoded' : '';
+  return `${match[1]}/[${segments.length} segment(s), ${lengths} chars${encoded}]`;
 }
 
 function describe(error: unknown): string {

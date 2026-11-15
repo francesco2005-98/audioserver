@@ -136,7 +136,7 @@ test('the pairing monitor names the step the Miniserver reached', () => {
   assert.equal(snapshot.lastGetConfig?.crc32, null);
   assert.deepEqual(
     snapshot.steps.map((step) => step.command),
-    ['secure/hello/[payload trimmed, 3 chars]'],
+    ['secure/hello/[1 segment(s), 3 chars]'],
     'app traffic does not crowd out the pairing steps',
   );
   loxonePairingMonitor.reset();
@@ -146,10 +146,10 @@ test('the secure handshake echoes the client key and stays ready to pair', async
   const handlers = createSecureHandlers(
     { getSystemConfig: () => ({ miniserver: { serial: '504f94111111' } }) } as ConfigPort,
   );
-  const hello = await handlers.hello('secure/hello/CLIENT/PUBLIC+KEY');
+  const hello = await handlers.hello('secure/hello/MINISERVER-ID/PUBLIC%2BKEY');
   const helloPayload = hello?.payload as { public_key: string; error: number };
   assert.equal(helloPayload.error, 0);
-  assert.equal(helloPayload.public_key, 'CLIENT/PUBLIC+KEY');
+  assert.equal(helloPayload.public_key, 'PUBLIC%2BKEY');
 
   const pairing = await handlers.infoPairing('secure/infopairing');
   const pairingPayload = pairing?.payload as { error: number; master: string };
