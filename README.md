@@ -27,8 +27,10 @@ The HTTP gateway listens on port 7090. The public API is described in
 [INTEGRATING.md](INTEGRATING.md).
 
 Spotify needs your own application: set the client id in the config, register the redirect
-`http://<server>:7090/callbacks/spotify/` (or `SPOTIFY_REDIRECT_URI`), and leave the Web
-Playback scopes off. Playback uses Soloist.
+`https://<server>:7090/callbacks/spotify/` (or `SPOTIFY_REDIRECT_URI`), and leave the Web
+Playback scopes off. Spotify refuses plain http for anything but `127.0.0.1`, so port 7090
+also answers https with a self-signed certificate; the browser warns about it once during
+sign-in. Playback uses Soloist.
 
 ## Contributing
 

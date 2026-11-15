@@ -1093,6 +1093,13 @@
   padding: 4px 14px;
 }
 
+.content-spotify-https-hint {
+  margin: 10px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .content-spec-row {
   display: grid;
   grid-template-columns: 130px 1fr auto;

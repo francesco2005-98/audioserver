@@ -970,12 +970,33 @@ function YtMusicHealthPanel({
 const YTMUSIC_STATUS_POLL_ATTEMPTS = 8;
 const YTMUSIC_STATUS_POLL_MS = 3_000;
 
-/** Absolute redirect Spotify must have registered. A bare path is rejected. */
+/**
+ * Absolute redirect Spotify must have registered, as the server builds it.
+ * Spotify refuses plain http except on loopback, so a LAN address uses https on
+ * the same port, where the server answers with its own certificate.
+ */
 function spotifyRedirectUri(): string {
   if (typeof window === 'undefined') {
     return '/callbacks/spotify/';
   }
-  return `${window.location.origin}/callbacks/spotify/`;
+  const url = new URL(window.location.origin);
+  const host = url.hostname.toLowerCase();
+  if (url.protocol === 'http:') {
+    if (host === 'localhost') {
+      url.hostname = '127.0.0.1';
+    } else if (!(host === '[::1]' || host.startsWith('127.'))) {
+      const port = url.port || '80';
+      url.protocol = 'https:';
+      url.port = port;
+    }
+  }
+  return `${url.origin}/callbacks/spotify/`;
+}
+
+/** True when the redirect goes to this server's self-signed certificate. */
+function spotifyRedirectNeedsCertificate(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.protocol === 'http:' && spotifyRedirectUri().startsWith('https:');
 }
 
 export default function ContentView(): JSX.Element {
@@ -4052,6 +4073,9 @@ export default function ContentView(): JSX.Element {
                     <span />
                   </div>
                 </div>
+                {spotifyRedirectNeedsCertificate() ? (
+                  <p className="content-spotify-https-hint">{t('content.spotify.spec.httpsHint')}</p>
+                ) : null}
 
                 <div>
                   <label className="content-input-label">{t('content.spotify.pasteLabel')}</label>

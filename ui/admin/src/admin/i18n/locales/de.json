@@ -464,7 +464,8 @@
         "redirectUri": "Weiterleitungs-URI",
         "enableApis": "APIs aktivieren",
         "apisValue": "Web API",
-        "copy": "Kopieren"
+        "copy": "Kopieren",
+        "httpsHint": "Spotify akzeptiert für eine Adresse im Heimnetz nur https. Trage die Weiterleitungs-URI genau so mit https ein. Beim Anmelden zeigt der Browser danach einmal eine Zertifikatswarnung für diesen Server: „Erweitert“ und „Weiter zu …“ wählen, dann geht es automatisch zurück."
       },
       "pasteLabel": "Client-ID hier einfügen",
       "pastePlaceholder": "32-stellige Client-ID",

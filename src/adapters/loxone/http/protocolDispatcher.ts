@@ -23,8 +23,9 @@ const TLS_HANDSHAKE_BYTE = 0x16;
  */
 export function createDualProtocolServer(
   httpServer: http.Server,
-  httpsServer: https.Server | null,
+  httpsServer: https.Server | null | (() => https.Server | null),
 ): net.Server {
+  const resolveHttps = typeof httpsServer === 'function' ? httpsServer : () => httpsServer;
   return net.createServer((socket) => {
     socket.once('error', (err) => {
       log.debug('dispatcher socket error', { msg: (err as Error).message });
@@ -39,7 +40,13 @@ export function createDualProtocolServer(
       socket.unshift(chunk);
 
       const isTls = chunk[0] === TLS_HANDSHAKE_BYTE;
-      const target = isTls && httpsServer ? httpsServer : httpServer;
+      const secure = isTls ? resolveHttps() : null;
+      if (isTls && !secure) {
+        // A TLS hello fed to the plain server only earns a garbage 400.
+        socket.destroy();
+        return;
+      }
+      const target = secure ?? httpServer;
       target.emit('connection', socket);
       process.nextTick(() => socket.resume());
     });

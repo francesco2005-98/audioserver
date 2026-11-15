@@ -1,5 +1,9 @@
 import http from 'node:http';
+import https from 'node:https';
+import type net from 'node:net';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createDualProtocolServer } from '@/adapters/loxone/http/protocolDispatcher';
+import { loadOrGenerateSelfSignedTls } from '@/adapters/loxone/http/tlsContext';
 import type { Duplex } from 'node:stream';
 import { createLogger } from '@/shared/logging/logger';
 import type { HttpServerConfig } from '@/config/http';
@@ -99,7 +103,8 @@ export class HttpService {
   private readonly connectionRegistry: ConnectionRegistry;
   private readonly zoneManager: ZoneManagerFacade;
   private server?: http.Server;
-  private eventsWsServer?: WebSocketServer;
+  private httpsServer?: https.Server;
+  private listener?: net.Server;
 
   constructor(
     private readonly config: HttpServerConfig,
@@ -174,7 +179,7 @@ export class HttpService {
       return;
     }
 
-    this.server = http.createServer((req, res) => {
+    const requestListener = (req: IncomingMessage, res: ServerResponse): void => {
       this.handleRequest(req, res).catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         this.log.error('http request failed', { message });
@@ -185,7 +190,8 @@ export class HttpService {
           res.end();
         }
       });
-    });
+    };
+    this.server = http.createServer(requestListener);
 
     /*
      * Outlive the clients that poll us.
@@ -208,20 +214,14 @@ export class HttpService {
     // WebSocket endpoint that mirrors the Loxone audio_event broadcast on the
     // main HTTP port so the admin UI can subscribe to live zone state without
     // hitting the separate Loxone WS port (cross-origin).
-    this.eventsWsServer = new WebSocketServer({
-      httpServer: this.server,
-      autoAcceptConnections: false,
-    });
-    this.eventsWsServer.on('request', (request) => {
-      if (request.resourceURL.pathname !== '/audio/events') {
-        return;
-      }
-      const connection = request.accept(null, request.origin);
-      this.handleEventsConnection(connection);
-    });
+    this.attachEventsSocket(this.server);
 
+    // HTTP and HTTPS share the port. Spotify only accepts an https redirect for a
+    // LAN address, and the self-signed certificate is enough for that one hop.
+    const listener = createDualProtocolServer(this.server, () => this.httpsServer ?? null);
+    this.listener = listener;
     await new Promise<void>((resolve, reject) => {
-      this.server!
+      listener
         .listen(this.config.port, this.config.host, () => {
           this.log.info('http gateway listening', {
             port: this.config.port,
@@ -231,23 +231,46 @@ export class HttpService {
         })
         .on('error', reject);
     });
+
+    // Generating a certificate takes a while on a small board. HTTP serves meanwhile.
+    void loadOrGenerateSelfSignedTls().then((tls) => {
+      if (!tls || !this.server || this.listener !== listener) {
+        return;
+      }
+      const httpsServer = https.createServer({ cert: tls.cert, key: tls.key }, requestListener);
+      httpsServer.keepAliveTimeout = 65_000;
+      httpsServer.headersTimeout = 70_000;
+      httpsServer.on('upgrade', (req, socket, head) => {
+        this.handleUpgrade(req, socket, head);
+      });
+      this.attachEventsSocket(httpsServer as unknown as http.Server);
+      this.httpsServer = httpsServer;
+      this.log.info('https gateway ready', { port: this.config.port });
+    });
   }
 
   public async stop(): Promise<void> {
+    const listener = this.listener;
+    const server = this.server;
+    const httpsServer = this.httpsServer;
+    this.listener = undefined;
+    this.server = undefined;
+    this.httpsServer = undefined;
     await new Promise<void>((resolve) => {
-      if (!this.server) {
+      if (!listener) {
         resolve();
         return;
       }
-      const server = this.server;
-      this.server = undefined;
-      server.close(() => resolve());
+      listener.close(() => resolve());
       // Force-drop keep-alive and /audio/events WebSocket connections so close()
       // resolves promptly instead of waiting on idle clients. Without this a soft
       // restart triggered over HTTP would stall on the caller's own still-open
       // socket (and any admin UI events stream); clients simply reconnect after.
-      server.closeAllConnections?.();
+      server?.closeAllConnections?.();
+      httpsServer?.closeAllConnections?.();
     });
+    server?.close();
+    httpsServer?.close();
     this.sendspin.close();
     this.snapcast.close();
   }
@@ -256,6 +279,18 @@ export class HttpService {
    *  shared :7090 gateway accepts /audio/... commands; with null it rejects them. */
   public setLoxoneProcessor(processor: LoxoneCommandProcessor | null): void {
     this.loxoneProcessor = processor;
+  }
+
+  private attachEventsSocket(server: http.Server): WebSocketServer {
+    const wsServer = new WebSocketServer({ httpServer: server, autoAcceptConnections: false });
+    wsServer.on('request', (request) => {
+      if (request.resourceURL.pathname !== '/audio/events') {
+        return;
+      }
+      const connection = request.accept(null, request.origin);
+      this.handleEventsConnection(connection);
+    });
+    return wsServer;
   }
 
   private handleEventsConnection(connection: WebSocketConnection): void {

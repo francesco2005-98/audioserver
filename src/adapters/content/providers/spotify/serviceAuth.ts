@@ -42,7 +42,36 @@ export function resolveSpotifyRedirectUri(cfg: AudioServerConfig, callbackOrigin
   if (fromCfg) {
     return fromCfg;
   }
-  return `${callbackOrigin.replace(/\/$/, '')}/callbacks/spotify/`;
+  return `${spotifyRedirectOrigin(callbackOrigin)}/callbacks/spotify/`;
+}
+
+/**
+ * Spotify rejects a plain-http redirect as insecure unless it is a loopback
+ * address, and it no longer accepts `localhost` at all. A LAN address therefore
+ * goes to https on the same port, which the gateway answers as well.
+ */
+export function spotifyRedirectOrigin(callbackOrigin: string): string {
+  let url: URL;
+  try {
+    url = new URL(callbackOrigin);
+  } catch {
+    return callbackOrigin.replace(/\/$/, '');
+  }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== 'http:') {
+    return url.origin;
+  }
+  if (host === 'localhost') {
+    url.hostname = '127.0.0.1';
+    return url.origin;
+  }
+  if (host === '127.0.0.1' || host === '[::1]' || host.startsWith('127.')) {
+    return url.origin;
+  }
+  const port = url.port || '80';
+  url.protocol = 'https:';
+  url.port = port;
+  return url.origin;
 }
 
 export function buildSpotifyAuthLink(params: BuildLinkParams, configPort: ConfigPort): string {

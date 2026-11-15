@@ -464,7 +464,8 @@
         "redirectUri": "Redirect URI",
         "enableApis": "Enable APIs",
         "apisValue": "Web API",
-        "copy": "Copy"
+        "copy": "Copy",
+        "httpsHint": "Spotify only accepts https for an address on your home network. Register the redirect URI exactly as shown, with https. When you sign in, the browser shows a certificate warning for this server once: choose Advanced and Proceed, and it returns here on its own."
       },
       "pasteLabel": "Paste your Client ID",
       "pastePlaceholder": "32-character Client ID",
