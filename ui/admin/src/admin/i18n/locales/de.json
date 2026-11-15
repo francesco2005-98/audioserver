@@ -1367,7 +1367,12 @@
         "never": "noch nicht",
         "steps": "Letzte Befehle des Miniservers ({{count}})",
         "unhandled": "Befehle ohne Antwort ({{count}}) — bitte Screenshot schicken",
-        "unhandledNone": "Gekoppelt. Bisher hat der Miniserver nichts geschickt, was dieser Server nicht beantworten kann."
+        "unhandledNone": "Gekoppelt. Bisher hat der Miniserver nichts geschickt, was dieser Server nicht beantworten kann.",
+        "captureHint": "Aufzeichnung: speichert zwei Minuten lang alles, was auf irgendeinem Port ankommt. Starten, dann in Loxone Config die Tree-Turbo-Suche ausführen.",
+        "captureRunning": "Zeichnet auf, noch {{seconds}} s. Jetzt in Loxone Config die Tree-Turbo-Suche starten.",
+        "captureStart": "Aufzeichnung starten",
+        "captureStop": "Aufzeichnung beenden",
+        "captureEntries": "Aufgezeichnet ({{count}}) — bitte Screenshot schicken"
       }
     },
     "add": {

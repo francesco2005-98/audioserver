@@ -17,7 +17,7 @@ import type { LoxoneServerOptions } from '@/adapters/loxone/http/types';
 import { formatCommand } from '@/adapters/loxone/commands/utils/commandFormatter';
 import type { ConnectionRegistry } from '@/adapters/loxone/ws/connectionRegistry';
 import type { ServerHeartbeat } from '@/adapters/loxone/ws/serverHeartbeat';
-import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
+import { describePayload, loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 import type { LoxoneWsNotifier } from '@/adapters/loxone/ws/notifier';
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { ConfigPort } from '@/ports/ConfigPort';
@@ -270,6 +270,13 @@ export class LoxoneHttpService {
     definition: LoxoneServerOptions,
   ): Promise<void> {
     if (message.type !== 'utf8') {
+      if (loxonePairingMonitor.capturing) {
+        loxonePairingMonitor.record(
+          definition.name,
+          connection.socket.remoteAddress ?? null,
+          `binary frame, ${describePayload(message.binaryData)}`,
+        );
+      }
       return;
     }
 

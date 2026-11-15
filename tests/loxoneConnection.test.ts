@@ -269,6 +269,24 @@ test('an added extension gets the next serial and is reported to the Miniserver 
   }
 });
 
+test('the recording keeps every port while it runs, and nothing after', () => {
+  loxonePairingMonitor.reset();
+  loxonePairingMonitor.command('appHttp', '192.168.2.10', 'audio/cfg/before');
+  loxonePairingMonitor.startCapture(60_000);
+  loxonePairingMonitor.command('appHttp', '192.168.2.10', 'audio/cfg/treeturbo');
+  loxonePairingMonitor.udpProbe('192.168.2.10', Buffer.from([0x00, 0x01, 0xff]));
+  loxonePairingMonitor.stopCapture();
+  loxonePairingMonitor.command('msHttp', '192.168.2.5', 'audio/cfg/after');
+  const entries = loxonePairingMonitor.snapshot().capture.entries;
+  assert.deepEqual(
+    entries.map((entry) => [entry.source, entry.detail]),
+    [
+      ['appHttp', 'audio/cfg/treeturbo'],
+      ['udp 7070', '3 bytes: 00 01 ff'],
+    ],
+  );
+});
+
 test('a command nothing answers is kept for the diagnosis', () => {
   loxonePairingMonitor.reset();
   loxonePairingMonitor.unhandled('audio/cfg/treeturbo/search');

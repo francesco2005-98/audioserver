@@ -37,10 +37,22 @@ export type LoxonePairingSnapshot = {
    * the Miniserver sends for them lands here, which is the only way to learn what they are.
    */
   unhandled: Array<{ at: number; command: string; count: number }>;
+  /**
+   * Everything that reaches this server for a short while, on every port.
+   *
+   * Started from the Loxone window, so a Config action can be run while it records. The Tree
+   * Turbo search sends nothing the Miniserver channel does not already answer, so the question
+   * is what it does send, and where.
+   */
+  capture: { until: number | null; entries: LoxoneCaptureEntry[] };
 };
+
+export type LoxoneCaptureEntry = { at: number; source: string; remote: string | null; detail: string };
 
 const MAX_STEPS = 40;
 const MAX_UNHANDLED = 20;
+const MAX_CAPTURE = 400;
+const MAX_CAPTURE_MS = 5 * 60_000;
 
 // Commands the Miniserver sends while pairing. The app sends many others on the
 // same ports; those do not say anything about pairing.
@@ -61,7 +73,30 @@ class LoxonePairingMonitor {
       lastSetConfigError: null,
       steps: [],
       unhandled: [],
+      capture: { until: null, entries: [] },
     };
+  }
+
+  public startCapture(durationMs: number): void {
+    const ms = Math.max(10_000, Math.min(MAX_CAPTURE_MS, durationMs));
+    this.state.capture = { until: Date.now() + ms, entries: [] };
+  }
+
+  public stopCapture(): void {
+    this.state.capture = { ...this.state.capture, until: null };
+  }
+
+  public get capturing(): boolean {
+    const until = this.state.capture.until;
+    return until !== null && Date.now() < until;
+  }
+
+  public record(source: string, remote: string | null, detail: string): void {
+    if (!this.capturing) {
+      return;
+    }
+    const entry = { at: Date.now(), source, remote, detail: detail.slice(0, 600) };
+    this.state.capture.entries = [...this.state.capture.entries, entry].slice(-MAX_CAPTURE);
   }
 
   public unhandled(command: string): void {
@@ -91,8 +126,11 @@ class LoxonePairingMonitor {
     this.state.udp = { ...this.state.udp, ok: !error, error: error ? describe(error) : null };
   }
 
-  public udpProbe(from: string): void {
+  public udpProbe(from: string, payload?: Buffer): void {
     this.state.udp = { ...this.state.udp, lastProbeAt: Date.now(), lastProbeFrom: from };
+    if (payload) {
+      this.record('udp 7070', from, describePayload(payload));
+    }
   }
 
   public started(): void {
@@ -110,6 +148,7 @@ class LoxonePairingMonitor {
   }
 
   public connection(port: 'appHttp' | 'msHttp', remote: string | null): void {
+    this.record(port, remote, 'websocket connected');
     if (port !== 'msHttp') {
       return;
     }
@@ -117,6 +156,7 @@ class LoxonePairingMonitor {
   }
 
   public command(port: LoxonePairingStep['port'], remote: string | null, command: string): void {
+    this.record(port, remote, describeCommand(command.replace(/^\/+/, '')));
     if (port !== 'msHttp' && !PAIRING_COMMAND.test(command)) {
       return;
     }
@@ -155,6 +195,17 @@ function describeCommand(command: string): string {
   const lengths = segments.map((segment) => segment.length).join('/');
   const encoded = /%[0-9a-f]{2}/i.test(match[2]) ? ', url-encoded' : '';
   return `${match[1]}/[${segments.length} segment(s), ${lengths} chars${encoded}]`;
+}
+
+/** Text when it reads as text, otherwise the first bytes in hex. */
+export function describePayload(payload: Buffer): string {
+  const text = payload.toString('utf8');
+  const printable = /^[\x20-\x7e\t\r\n\u00a0-\uffff]*$/.test(text) && !text.includes('\ufffd');
+  if (printable && text.trim()) {
+    return text.trim();
+  }
+  const head = payload.subarray(0, 64).toString('hex').replace(/(..)/g, '$1 ').trim();
+  return `${payload.length} bytes: ${head}${payload.length > 64 ? ' …' : ''}`;
 }
 
 function describe(error: unknown): string {

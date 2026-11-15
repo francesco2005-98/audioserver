@@ -86,8 +86,8 @@ export class LoxoneUdpDiscovery {
     socket.on('error', (error) => this.fail('listener', error));
     responder.on('error', (error) => this.fail('responder', error));
 
-    socket.on('message', (_msg, rinfo) => {
-      loxonePairingMonitor.udpProbe(rinfo.address);
+    socket.on('message', (msg, rinfo) => {
+      loxonePairingMonitor.udpProbe(rinfo.address, msg);
       const payload = Buffer.from(this.currentPayload(), 'utf8');
       this.log.info('udp discovery probe received', {
         from: `${rinfo.address}:${rinfo.port}`,

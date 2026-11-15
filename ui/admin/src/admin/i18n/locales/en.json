@@ -1367,7 +1367,12 @@
         "never": "not yet",
         "steps": "Latest Miniserver commands ({{count}})",
         "unhandled": "Commands without an answer ({{count}}) — please send a screenshot",
-        "unhandledNone": "Paired. So far the Miniserver has sent nothing this server cannot answer."
+        "unhandledNone": "Paired. So far the Miniserver has sent nothing this server cannot answer.",
+        "captureHint": "Recording: keeps everything that arrives on any port for two minutes. Start it, then run the Tree Turbo search in Loxone Config.",
+        "captureRunning": "Recording, {{seconds}} s left. Run the Tree Turbo search in Loxone Config now.",
+        "captureStart": "Start recording",
+        "captureStop": "Stop recording",
+        "captureEntries": "Recorded ({{count}}) — please send a screenshot"
       }
     },
     "add": {

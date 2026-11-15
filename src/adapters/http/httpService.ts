@@ -361,6 +361,20 @@ export class HttpService {
 
     const pathname = this.normalizePath(req.url ?? '/');
 
+    // The admin screen's own polling and assets would bury what Loxone Config sends.
+    if (
+      loxonePairingMonitor.capturing &&
+      !pathname.startsWith('/audio/') &&
+      !this.adminApi.matches(pathname) &&
+      !/^\/(admin|player|assets|favicon|events)/.test(pathname)
+    ) {
+      loxonePairingMonitor.record(
+        'gateway',
+        req.socket.remoteAddress ?? null,
+        `${req.method ?? 'GET'} ${req.url ?? '/'} ua=${req.headers['user-agent'] ?? '-'}`,
+      );
+    }
+
     // WebDAV owns its own OPTIONS: clients read the DAV/Allow headers from it to
     // decide the mount is writable, and a bare 204 reads as "not a WebDAV share".
     if (req.method === 'OPTIONS' && !this.webdav?.matches(pathname)) {

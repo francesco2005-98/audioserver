@@ -212,6 +212,20 @@ export function buildMiscRoutes(deps: MiscHandlerDeps): Route[] {
     },
     {
       method: 'POST',
+      pattern: /^\/setup\/loxone\/capture$/,
+      handler: async (req, res) => {
+        const body = (await deps.readJsonBody(req, res)) as { stop?: boolean; seconds?: number } | null;
+        if (res.writableEnded) return;
+        if (body?.stop) {
+          loxonePairingMonitor.stopCapture();
+        } else {
+          loxonePairingMonitor.startCapture((Number(body?.seconds) || 120) * 1000);
+        }
+        handleLoxonePairing(res, deps);
+      },
+    },
+    {
+      method: 'POST',
       pattern: /^\/adminui\/update$/,
       handler: async (req, res) => {
         if (adminUiUpdateInFlight) {

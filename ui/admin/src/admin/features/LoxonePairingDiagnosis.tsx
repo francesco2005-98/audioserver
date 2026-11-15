@@ -1,6 +1,6 @@
 import React, { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
-import { fetchLoxonePairing, type LoxonePairingStatus } from '../services/setupApi';
+import { fetchLoxonePairing, setLoxoneCapture, type LoxonePairingStatus } from '../services/setupApi';
 
 type Verdict = { tone: 'ok' | 'warn' | 'error'; text: string };
 
@@ -120,12 +120,49 @@ export default function LoxonePairingDiagnosis({ active }: { active: boolean }):
     </details>
   ) : null;
 
+  const capture = status.capture ?? { until: null, entries: [] };
+  const recording = capture.until !== null && capture.until > status.now;
+  const toggleCapture = async (): Promise<void> => {
+    try {
+      setStatus(await setLoxoneCapture(!recording));
+    } catch {
+      // The next poll shows whatever the server ended up doing.
+    }
+  };
+  const captureBlock = (
+    <div className="zones-loxone-diag__capture">
+      <p className="zones-loxone-diag__hint">
+        {recording
+          ? t('zones.loxone.diag.captureRunning', {
+            seconds: Math.max(0, Math.round(((capture.until ?? 0) - status.now) / 1000)),
+          })
+          : t('zones.loxone.diag.captureHint')}
+      </p>
+      <button type="button" className="zones-modal__btn" onClick={() => void toggleCapture()}>
+        {recording ? t('zones.loxone.diag.captureStop') : t('zones.loxone.diag.captureStart')}
+      </button>
+      {capture.entries.length ? (
+        <details className="zones-loxone-diag__steps" open>
+          <summary>{t('zones.loxone.diag.captureEntries', { count: capture.entries.length })}</summary>
+          <ol>
+            {capture.entries.slice(-60).map((entry, index) => (
+              <li key={`${entry.at}-${index}`}>
+                <time>{time(entry.at)}</time> {entry.source} {entry.remote ?? ''} <code>{entry.detail}</code>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+    </div>
+  );
+
   // Once paired, only what can still go wrong is worth the room: Config actions such as the
   // Tree Turbo search that this server does not answer yet.
   if (status.paired) {
     return (
       <section className="zones-loxone-diag" aria-live="polite">
         {unhandledList ?? <p className="zones-loxone-diag__hint">{t('zones.loxone.diag.unhandledNone')}</p>}
+        {captureBlock}
       </section>
     );
   }
@@ -134,6 +171,7 @@ export default function LoxonePairingDiagnosis({ active }: { active: boolean }):
     <section className="zones-loxone-diag" aria-live="polite">
       <p className={`zones-loxone-diag__verdict zones-loxone-diag__verdict--${verdict.tone}`}>{verdict.text}</p>
       {unhandledList}
+      {captureBlock}
       <dl className="zones-loxone-diag__rows">
         {rows.map(([label, value]) => (
           <div key={label}>

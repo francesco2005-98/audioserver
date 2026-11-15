@@ -5032,6 +5032,12 @@ button.zones-hub__toggle:disabled {
   color: var(--text-muted);
   font-size: var(--fs-sm);
 }
+.zones-loxone-diag__capture {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
 .zones-loxone-modal__steps {
   margin: 0 0 16px;
   padding-left: 18px;

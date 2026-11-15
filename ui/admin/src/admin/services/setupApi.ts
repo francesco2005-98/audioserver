@@ -106,8 +106,21 @@ export type LoxonePairingStatus = {
   lastSetConfigError: { at: number; reason: string } | null;
   steps: Array<{ at: number; port: string; remote: string | null; command: string }>;
   unhandled?: Array<{ at: number; command: string; count: number }>;
+  capture?: {
+    until: number | null;
+    entries: Array<{ at: number; source: string; remote: string | null; detail: string }>;
+  };
   miniserver: { ip: string | null; serial: string | null };
 };
+
+export async function setLoxoneCapture(running: boolean): Promise<LoxonePairingStatus> {
+  return requestJson<LoxonePairingStatus>(`${API_BASE}/setup/loxone/capture`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(running ? { seconds: 120 } : { stop: true }),
+    errorMessage: 'Failed to change the Loxone recording',
+  });
+}
 
 export async function fetchLoxonePairing(): Promise<LoxonePairingStatus> {
   return requestJson<LoxonePairingStatus>(`${API_BASE}/setup/loxone/pairing`, {
