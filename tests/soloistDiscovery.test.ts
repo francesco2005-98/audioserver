@@ -32,13 +32,7 @@ test('spotify discovery: a docker address is announced again on the lan', () => 
   assert.equal(seen.deviceName, 'Audioserver — Küche');
   assert.equal(seen.port, 43210);
   assert.equal(shouldRepublishConnect(seen, ['192.168.10.25']), true);
-  assert.equal(
-    shouldRepublishConnect(
-      noteSoloistLine(noteSoloistLine({}, 'ready, device_name=Küche device_id=abc'), 'Started ZeroConf service on port 1 path /zc'),
-      ['192.168.10.25'],
-    ),
-    false,
-  );
+  assert.equal(shouldRepublishConnect(seen, []), false);
 });
 
 test('spotify discovery: a failed mdns init is announced from here', () => {

@@ -496,7 +496,7 @@
       "playback": {
         "ready": "Can browse and play in your rooms. In the Spotify app the room that is playing shows up as “Audioserver — room name” in the speaker menu, not under Settings → Devices.",
         "browseOnly": "Can browse, but cannot play yet — sign in once from your Spotify app.",
-        "waiting": "Waiting — start a song in the Spotify app, tap the speaker icon at the bottom and pick “{{device}}”. Not Settings → Devices: that list only shows devices already signed in. The phone has to be on the same network, and the entry is only there while this says Waiting.",
+        "waiting": "Waiting — start a song in the Spotify app and open the device list from the speaker icon at the bottom. Pick “{{device}}”. Settings → Devices stays empty until it has been connected there once. The phone has to be on the same network, and the entry is only there while this says Waiting.",
         "thisServer": "this server",
         "notPicked": "Nobody picked it in time. Start a song, tap the speaker icon and pick it there — not under Settings → Devices.",
         "discoveryBusy": "The device cannot appear: network discovery (port 5353) is already taken on this machine, usually by Avahi or a second Spotify player.",

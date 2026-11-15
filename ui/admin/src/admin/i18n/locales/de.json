@@ -496,7 +496,7 @@
       "playback": {
         "ready": "Kann durchsuchen und in deinen Räumen abspielen. In der Spotify-App steht der Raum, der gerade spielt, als „Audioserver — Raumname“ im Lautsprecher-Menü, nicht unter Einstellungen → Geräte.",
         "browseOnly": "Kann durchsuchen, aber noch nicht abspielen — einmal aus deiner Spotify-App anmelden.",
-        "waiting": "Wartet — starte in der Spotify-App ein Lied, tippe unten auf das Lautsprecher-Symbol und wähle „{{device}}“. Nicht unter Einstellungen → Geräte: dort stehen nur schon angemeldete Geräte. Das Handy muss im selben Netz sein, und der Eintrag ist nur sichtbar, solange hier „Wartet“ steht.",
+        "waiting": "Wartet — starte in der Spotify-App ein Lied und öffne unten die Geräteliste über das Lautsprecher-Symbol. Wähle „{{device}}“. Unter Einstellungen → Geräte steht es erst, nachdem es dort einmal verbunden wurde. Das Handy muss im selben Netz sein, und der Eintrag ist nur sichtbar, solange hier „Wartet“ steht.",
         "thisServer": "dieser Server",
         "notPicked": "Niemand hat es rechtzeitig ausgewählt. Starte ein Lied, tippe auf das Lautsprecher-Symbol und wähle es dort — nicht unter Einstellungen → Geräte.",
         "discoveryBusy": "Das Gerät kann nicht erscheinen: die Suche im Netz (Port 5353) ist auf diesem Rechner schon belegt, meist durch Avahi oder einen zweiten Spotify-Player.",
