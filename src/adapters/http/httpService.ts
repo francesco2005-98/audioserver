@@ -30,6 +30,7 @@ import type { BluetoothNowPlayingSink } from '@/adapters/http/audioserverClientA
 import type { StreamEvents } from '@/adapters/http/streams/streamEvents';
 import type { LoxoneCommandProcessor } from '@/adapters/loxone/http/commandProcessor';
 import type { ConnectionRegistry } from '@/adapters/loxone/ws/connectionRegistry';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 import type { BrowserZoneRegistry } from '@/application/zones/browserZoneRegistry';
 import { connection as WebSocketConnection, server as WebSocketServer } from 'websocket';
 import type { LmsCliServer } from '@/adapters/outputs/squeezelite/lmsCliServer';
@@ -286,6 +287,7 @@ export class HttpService {
       res.end(JSON.stringify({ error: 'loxone-disabled' }));
       return;
     }
+    loxonePairingMonitor.command('gateway', req.socket.remoteAddress ?? null, command);
     try {
       const body = await this.readRequestBody(req);
       const response = await this.loxoneProcessor.execute(command, body);

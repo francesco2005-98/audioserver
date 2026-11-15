@@ -367,6 +367,29 @@
    Dense read-only key/value band that fills the width of a section instead
    of stacking label/value rows down one narrow column. Auto-fit means the
    same markup reads as a 4-up strip on desktop and a 2-up grid on a phone. */
+.setup-timezone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 18px 18px;
+}
+.setup-timezone__input {
+  flex: 0 1 260px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.setup-timezone__hint {
+  flex: 1 1 220px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
 .setup-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));

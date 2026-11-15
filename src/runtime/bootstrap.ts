@@ -22,6 +22,8 @@ import { createApiZoneResolvers } from '@/runtime/apiZoneResolvers';
 import { HttpService } from '@/adapters/http';
 import { LoxoneHttpService } from '@/adapters/loxone/http';
 import { notifyMiniserverStartup } from '@/adapters/loxone/miniserverStartup';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
+import { applyTimezone } from '@/shared/time/timezone';
 import { LoxoneCommandProcessor } from '@/adapters/loxone/http/commandProcessor';
 import { BrowserZoneRegistry } from '@/application/zones/browserZoneRegistry';
 import { createInputsAdapter } from '@/adapters/inputs/InputsAdapter';
@@ -529,6 +531,8 @@ export function createRuntime(): Runtime {
 
   async function startServices(): Promise<void> {
     const storedConfig = await configPort.load();
+    // The zone the Miniserver sent outranks TZ from the container, which is only a default.
+    const timezone = applyTimezone(storedConfig.system?.audioserver?.timezone);
     const config = loadConfig(storedConfig.system?.audioserver?.macId);
     const logLevel = storedConfig.system?.logging?.consoleLevel ?? config.env.logLevel;
     logManager.configure({ level: logLevel });
@@ -551,6 +555,7 @@ export function createRuntime(): Runtime {
     log.info('bootstrapping audio server', {
       env: config.env.nodeEnv,
       loxoneEnabled,
+      timezone,
     });
 
     await zoneManager.initialize();
@@ -623,7 +628,9 @@ export function createRuntime(): Runtime {
       loxoneService = service;
       try {
         await service.start();
+        loxonePairingMonitor.started();
       } catch (error) {
+        loxonePairingMonitor.startFailed(error);
         // Roll back so a retry isn't blocked by a half-started subsystem (and the
         // gateway doesn't keep accepting Loxone commands nothing is serving).
         try {
@@ -651,6 +658,7 @@ export function createRuntime(): Runtime {
         await loxoneService.stop();
         loxoneService = null;
       }
+      loxonePairingMonitor.stopped();
       httpService?.setLoxoneProcessor(null);
       if (persist) {
         await configPort.updateConfig((cfg) => {
@@ -866,7 +874,15 @@ export function createRuntime(): Runtime {
     // Bring the Loxone subsystem up if it's connected. Same path a runtime connect
     // uses; persist=false because the flag is already set. A plain server skips it.
     if (loxoneEnabled) {
-      await startWithTimeout('loxone', () => enableLoxone(false), LOXONE_START_TIMEOUT_MS);
+      // A taken Loxone port must not take the whole server down with it. The
+      // reason is shown in the Loxone window, and connecting again retries.
+      try {
+        await startWithTimeout('loxone', () => enableLoxone(false), LOXONE_START_TIMEOUT_MS);
+      } catch (error) {
+        log.error('loxone subsystem could not start', {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // Not just a log line: this is what /ready and /health answer from, so a supervisor

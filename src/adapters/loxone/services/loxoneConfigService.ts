@@ -2,6 +2,7 @@ import { isIP } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
 import { asyncCrc32 } from '@/shared/utils/crc32';
 import { createLogger } from '@/shared/logging/logger';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 import type { AudioServerConfig } from '@/domain/config/types';
 import { extractZonesFromLoxoneConfig, buildZoneConfigs } from '@/adapters/loxone/services/loxoneZoneExtractor';
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
@@ -218,10 +219,12 @@ export class LoxoneConfigService {
     let macId = cfg.system.audioserver.macId?.trim().toUpperCase();
     const serials = this.serverSerials(parsed);
     let section = macId ? this.findServerSection(parsed, macId) : undefined;
+    let adopted = false;
     // The Miniserver only pushes to the box it means. A single section under a
     // different serial is this server under the serial Loxone Config carries,
     // typically one left over from a previous installation.
     if (!section && serials.length === 1 && serials[0]) {
+      adopted = true;
       this.log.warn('miniserver config is for another serial; adopting it', {
         serial: macId ?? null,
         adopted: serials[0],
@@ -235,6 +238,7 @@ export class LoxoneConfigService {
       matched: Boolean(section),
       serials,
     });
+    loxonePairingMonitor.setConfig({ serial: macId ?? null, serials, matched: Boolean(section), adopted });
     if (!macId || !section) {
       return;
     }

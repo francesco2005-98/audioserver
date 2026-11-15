@@ -154,6 +154,8 @@ export interface AudioserverConfig {
   slimprotoJsonPort?: number;
   /** Global crossfade duration in seconds between songs (0 or absent = disabled). */
   crossfadeSec?: number;
+  /** IANA time zone, e.g. `Europe/Berlin`. Sent by the Miniserver or set in the admin. */
+  timezone?: string;
 }
 
 export interface AudioserverExtensionConfig {

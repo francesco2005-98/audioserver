@@ -52,6 +52,15 @@ export async function updateAudioServerMacId(macId: string): Promise<void> {
   });
 }
 
+export async function updateTimezone(timezone: string): Promise<void> {
+  await requestOk(`${API_BASE}/config/system`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioserver: { timezone } }),
+    errorMessage: 'Failed to update the time zone',
+  });
+}
+
 export async function updateAudioServerIp(ip: string): Promise<void> {
   await requestOk(`${API_BASE}/config/system`, {
     method: 'POST',
@@ -73,6 +82,38 @@ export async function setLoxoneConnection(enabled: boolean): Promise<void> {
   });
 }
 
+
+export type LoxonePairingStatus = {
+  now: number;
+  enabled: boolean;
+  paired: boolean;
+  running: boolean;
+  serial: string | null;
+  ip: string | null;
+  storedCrc32: string | null;
+  startError: string | null;
+  listeners: Array<{ name: string; port: number; ok: boolean; error: string | null; at: number }>;
+  udp: { ok: boolean; error: string | null; lastProbeAt: number | null; lastProbeFrom: string | null };
+  lastConnection: { at: number; port: string; remote: string | null } | null;
+  lastGetConfig: { at: number; crc32: string | null } | null;
+  lastSetConfig: {
+    at: number;
+    serial: string | null;
+    serials: string[];
+    matched: boolean;
+    adopted: boolean;
+  } | null;
+  lastSetConfigError: { at: number; reason: string } | null;
+  steps: Array<{ at: number; port: string; remote: string | null; command: string }>;
+  miniserver: { ip: string | null; serial: string | null };
+};
+
+export async function fetchLoxonePairing(): Promise<LoxonePairingStatus> {
+  return requestJson<LoxonePairingStatus>(`${API_BASE}/setup/loxone/pairing`, {
+    includeBodyInError: false,
+    errorMessage: 'Failed to read the Loxone pairing state',
+  });
+}
 
 export async function updateManagedPlayers(managedPlayers: boolean): Promise<void> {
   await requestOk(`${API_BASE}/config/system`, {

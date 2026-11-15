@@ -80,6 +80,7 @@ RUN apt-get update \
         libftdi1 \
         libhidapi-libusb0 \
         python3 \
+        tzdata \
         # Spotify's Soloist is supplied by the user, not shipped, but it can only run here: it
         # links against libatomic and reaches a sound card through libpulse, which it dlopens and
         # points at this server's own. No sound daemon is involved, and none is installed.

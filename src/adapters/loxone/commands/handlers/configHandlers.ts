@@ -10,6 +10,8 @@ import type { CommandResult, HandlerFn } from '@/adapters/loxone/commands/types'
 import { decodeBase64Segment, safeJsonParse } from '@/adapters/loxone/commands/utils/payload';
 import type { LoxoneConfigService } from '@/adapters/loxone/services/loxoneConfigService';
 import { createLogger } from '@/shared/logging/logger';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
+import { applyTimezone, currentTimezone, isValidTimezone } from '@/shared/time/timezone';
 import {
   buildSpotifyAuthLink,
   deleteSpotifyAccount,
@@ -76,6 +78,7 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
     getConfig: handler((command) => {
       const info = configService.getCurrentConfigInfo();
       log.info('miniserver asked for the stored config', { crc32: info.crc32 ?? null });
+      loxonePairingMonitor.getConfig(info.crc32 ?? null);
       return buildEmptyResponseWithPayload(command, {
         crc32: info.crc32 ?? null,
         extensions: info.extensions ?? [],
@@ -98,6 +101,28 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
     miniserverTime: handler((command) =>
       buildEmptyResponseWithPayload(command, Date.now()),
     ),
+    // `audio/cfg/timezone/Europe/Berlin`: the zone spans the rest of the path.
+    timezone: handler(async (command) => {
+      const prefix = 'audio/cfg/timezone/';
+      const normalized = command.replace(/^\/+/, '');
+      let zone = normalized.startsWith(prefix) ? normalized.slice(prefix.length) : '';
+      try {
+        zone = decodeURIComponent(zone).trim();
+      } catch {
+        zone = zone.trim();
+      }
+      if (!isValidTimezone(zone)) {
+        log.warn('miniserver sent an unknown time zone', { zone });
+        return buildResponse(command, 'timezone', { error: 'invalid-timezone', timezone: currentTimezone() });
+      }
+      if (configPort.getSystemConfig()?.audioserver?.timezone !== zone) {
+        await configPort.updateConfig((cfg) => {
+          cfg.system.audioserver.timezone = zone;
+        });
+        log.info('time zone taken from the miniserver', { zone });
+      }
+      return buildResponse(command, 'timezone', { timezone: applyTimezone(zone) });
+    }),
     restart: handler(async (command) => {
       loxoneNotifier?.notifyRestart();
       if (!options.onRestart) {
@@ -119,8 +144,15 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
       }
     }),
     setConfig: handler(async (command) => {
-      const encoded = getSegment(command, 3);
+      // Base64 has '/' in its alphabet, so the payload is everything after the
+      // prefix rather than one path segment.
+      const prefix = 'audio/cfg/setconfig/';
+      const normalized = command.replace(/^\/+/, '');
+      const encoded = normalized.startsWith(prefix)
+        ? normalized.slice(prefix.length).split('?')[0]
+        : getSegment(command, 3);
       if (!encoded) {
+        loxonePairingMonitor.setConfigFailed('missing-payload');
         return buildResponse(command, 'setconfig', {
           success: false,
           error: 'missing-payload',
@@ -137,6 +169,7 @@ export function createConfigHandlers(config: LoxoneHttpConfig, options: ConfigHa
       const parsed = safeJsonParse<unknown>(decoded);
       if (!parsed) {
         log.warn('miniserver config could not be read', { length: encoded.length });
+        loxonePairingMonitor.setConfigFailed('invalid-config');
         return buildResponse(command, 'setconfig', {
           success: false,
           error: 'invalid-config',

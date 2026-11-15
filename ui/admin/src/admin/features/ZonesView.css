@@ -4970,6 +4970,53 @@ button.zones-hub__toggle:disabled {
   font-size: var(--fs-xs);
   line-height: 1.45;
 }
+.zones-loxone-diag {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 4%);
+  font-size: var(--fs-sm);
+}
+.zones-loxone-diag__verdict {
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+.zones-loxone-diag__verdict--ok { color: var(--success, #4ade80); }
+.zones-loxone-diag__verdict--warn { color: var(--warn-bright, #fbbf24); }
+.zones-loxone-diag__verdict--error { color: var(--danger, #f87171); }
+.zones-loxone-diag__rows {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.zones-loxone-diag__rows > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  gap: 10px;
+}
+.zones-loxone-diag__rows dt {
+  color: var(--text-muted);
+}
+.zones-loxone-diag__rows dd {
+  margin: 0;
+  word-break: break-word;
+}
+.zones-loxone-diag__steps {
+  margin-top: 10px;
+  color: var(--text-muted);
+}
+.zones-loxone-diag__steps ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.zones-loxone-diag__steps code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  word-break: break-all;
+}
 .zones-loxone-modal__steps {
   margin: 0 0 16px;
   padding-left: 18px;

@@ -3,6 +3,7 @@ import { test } from './testHarness';
 import { loadEnvironment } from '../src/config/environment';
 import { buildLoxoneHttpConfig, loxoneIdentification } from '../src/config/loxone';
 import { LoxoneConfigService } from '../src/adapters/loxone/services/loxoneConfigService';
+import { loxonePairingMonitor } from '../src/adapters/loxone/pairingMonitor';
 import {
   buildLoxoneDiscoveryPayload,
   loxoneDiscoveryFields,
@@ -95,6 +96,50 @@ test('setconfig answers under the segment the Miniserver sent and wakes the conn
   assert.equal(woke, 1);
   const wire = JSON.parse(serializeResult(result)) as Record<string, { crc32: string }>;
   assert.equal(wire[`${body}_result`]?.crc32, 'abc');
+});
+
+test('setconfig keeps a base64 body that contains slashes', async () => {
+  let stored: unknown = null;
+  const handlers = createConfigHandlers(config, {
+    notifier: {} as never,
+    configService: {
+      async setRawAudioConfig(payload: { raw: unknown }) {
+        stored = payload.raw;
+        return 'abc';
+      },
+      getCurrentConfigInfo() {
+        return { crc32: 'abc', extensions: [] };
+      },
+    } as never,
+    configPort: {} as never,
+    contentManager: {} as never,
+    spotifyInputService: {} as never,
+  });
+  // '???' encodes to 'Pz8/', so the body carries a '/' the way real projects do.
+  const project = [{ '504F94FF1BB3': { name: '???', players: [] } }];
+  const body = Buffer.from(JSON.stringify(project)).toString('base64');
+  assert.ok(body.includes('/'));
+  await handlers.setConfig(`audio/cfg/setconfig/${body}`);
+  assert.deepEqual(stored, project);
+});
+
+test('the pairing monitor names the step the Miniserver reached', () => {
+  loxonePairingMonitor.reset();
+  loxonePairingMonitor.started();
+  loxonePairingMonitor.connection('msHttp', '192.168.1.10');
+  loxonePairingMonitor.command('msHttp', '192.168.1.10', 'secure/hello/KEY');
+  loxonePairingMonitor.command('appHttp', '192.168.1.20', 'audio/7/recent');
+  loxonePairingMonitor.getConfig(null);
+  const snapshot = loxonePairingMonitor.snapshot();
+  assert.equal(snapshot.running, true);
+  assert.equal(snapshot.lastConnection?.remote, '192.168.1.10');
+  assert.equal(snapshot.lastGetConfig?.crc32, null);
+  assert.deepEqual(
+    snapshot.steps.map((step) => step.command),
+    ['secure/hello/[payload trimmed, 3 chars]'],
+    'app traffic does not crowd out the pairing steps',
+  );
+  loxonePairingMonitor.reset();
 });
 
 test('the secure handshake echoes the client key and stays ready to pair', async () => {

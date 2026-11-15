@@ -152,7 +152,7 @@ export function registerRoutes(
   router.registerPrefix('audio', 'audio/cfg/presencemode', placeholder('presencemode'));
   router.registerPrefix('audio', 'audio/cfg/miniserverip', placeholder('miniserverip'));
   router.registerPrefix('audio', 'audio/cfg/miniserverversion', placeholder('miniserverversion'));
-  router.registerPrefix('audio', 'audio/cfg/timezone', placeholder('timezone'));
+  router.registerPrefix('audio', 'audio/cfg/timezone', configHandlers.timezone);
   router.registerPrefix('audio', 'audio/cfg/servicecfg/getlink', configHandlers.serviceCfgGetLink);
   router.registerPrefix('audio', 'audio/cfg/servicecfg/delete', configHandlers.serviceCfgDelete);
   router.registerPrefix('audio', 'audio/cfg/upload/audioupload/add/', alertHandlers.audioCfgUploadAudiouploadAdd);

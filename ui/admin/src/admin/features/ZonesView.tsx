@@ -29,6 +29,7 @@ import Modal from '../components/Modal';
 import SearchInput from '../components/SearchInput';
 import Row from '../components/Row';
 import SelectMenu from '../components/SelectMenu';
+import LoxonePairingDiagnosis from './LoxonePairingDiagnosis';
 import ZoneBeoremoteSection from './ZoneBeoremoteSection';
 import ZoneBluetoothSection from './ZoneBluetoothSection';
 import ZoneDeviceSection from './ZoneDeviceSection';
@@ -104,6 +105,7 @@ type AudioServerExtension = {
 
 type AudioServerConfig = {
   macId?: string;
+  ip?: string;
   name?: string;
   paired?: boolean;
   loxoneEnabled?: boolean;
@@ -206,6 +208,7 @@ export default function ZonesView(): JSX.Element {
   const [managedSaving, setManagedSaving] = React.useState(false);
   const [loxoneModalOpen, setLoxoneModalOpen] = React.useState(false);
   const [loxoneBusy, setLoxoneBusy] = React.useState(false);
+  const [serverIp, setServerIp] = React.useState('');
   const [serialDraft, setSerialDraft] = React.useState('');
   const [serialSaving, setSerialSaving] = React.useState(false);
   const [addZoneOpen, setAddZoneOpen] = React.useState(false);
@@ -266,6 +269,7 @@ export default function ZonesView(): JSX.Element {
       const hasAccounts = spotifyAccounts.length > 0;
       setHasSpotifyAccounts(hasAccounts);
       setBaseSerial(base);
+      setServerIp(data.config?.system?.audioserver?.ip?.trim() ?? '');
       setPowerGroups(Array.isArray(data.config?.groups?.powerGroups) ? data.config?.groups?.powerGroups : []);
       setTransportDefinitions(definitions);
       setZoneStateMap(states?.map ?? {});
@@ -1509,7 +1513,7 @@ export default function ZonesView(): JSX.Element {
               </div>
               <div>
                 <dt>{t('zones.loxone.host')}</dt>
-                <dd>{typeof window !== 'undefined' ? window.location.hostname || '—' : '—'}</dd>
+                <dd>{serverIp || (typeof window !== 'undefined' ? window.location.hostname : '') || '—'}</dd>
               </div>
             </dl>
             <label className="zones-loxone-modal__serial">
@@ -1538,6 +1542,8 @@ export default function ZonesView(): JSX.Element {
             </label>
           </>
         ) : null}
+
+        <LoxonePairingDiagnosis active={loxoneModalOpen && !standalone && !paired} />
 
         {!standalone && !paired ? (
           <ol className="zones-loxone-modal__steps">

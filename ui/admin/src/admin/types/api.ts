@@ -20,6 +20,10 @@ export type StatusResponse = {
    */
   gitBranch?: string | null;
   uptime?: number;
+  /** IANA zone the server runs in, its offset, and the server's clock in that zone. */
+  timezone?: string;
+  utcOffset?: string;
+  serverTime?: string;
   name?: string;
   serial?: string;
   firmwareVersion?: string;

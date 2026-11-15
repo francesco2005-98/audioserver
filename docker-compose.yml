@@ -17,6 +17,10 @@ services:
     hostname: audioserver
     restart: unless-stopped
     network_mode: host
+    # Starting time zone. A Miniserver sends its own during pairing, which then
+    # applies, and the admin can set one under Settings.
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
     # Mounting an SMB/NAS share from inside the container needs both of these, and neither works
     # without the other: SYS_ADMIN is what the mount itself requires, and Docker's default AppArmor
     # profile blocks mounting even when that capability is granted. Leaving security_opt out is the

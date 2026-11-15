@@ -17,6 +17,7 @@ import type { LoxoneServerOptions } from '@/adapters/loxone/http/types';
 import { formatCommand } from '@/adapters/loxone/commands/utils/commandFormatter';
 import type { ConnectionRegistry } from '@/adapters/loxone/ws/connectionRegistry';
 import type { ServerHeartbeat } from '@/adapters/loxone/ws/serverHeartbeat';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 import type { LoxoneWsNotifier } from '@/adapters/loxone/ws/notifier';
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { ConfigPort } from '@/ports/ConfigPort';
@@ -154,17 +155,27 @@ export class LoxoneHttpService {
   }
 
   private listen(runtime: ServerRuntime): Promise<void> {
+    const { name, port } = runtime.definition;
     return new Promise((resolve, reject) => {
       runtime.listener
-        .listen(runtime.definition.port, this.options.host, () => {
+        .listen(port, this.options.host, () => {
           this.log.info('loxone server listening', {
-            name: runtime.definition.name,
-            port: runtime.definition.port,
+            name,
+            port,
             tls: runtime.tlsEnabled ? 'dual' : 'plain',
           });
+          loxonePairingMonitor.listener(name, port);
           resolve();
         })
-        .on('error', reject);
+        .on('error', (error) => {
+          this.log.error('loxone server could not listen', {
+            name,
+            port,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          loxonePairingMonitor.listener(name, port, error);
+          reject(error);
+        });
     });
   }
 
@@ -190,6 +201,7 @@ export class LoxoneHttpService {
       this.sendOptions(res);
       return;
     }
+    loxonePairingMonitor.command(definition.name, req.socket.remoteAddress ?? null, url);
 
     const body = await this.readBody(req);
     const response = await this.processor.execute(url, body);
@@ -209,6 +221,7 @@ export class LoxoneHttpService {
     const serial = this.currentSerial();
     connection.sendUTF(loxoneIdentification(this.config, definition.name, serial));
     this.options.connectionRegistry.registerConnection(connection);
+    loxonePairingMonitor.connection(definition.name, connection.socket.remoteAddress ?? null);
     if (definition.name === 'msHttp') {
       this.log.info('miniserver connected', {
         remote: connection.socket.remoteAddress,
@@ -261,6 +274,7 @@ export class LoxoneHttpService {
     }
 
     const command = message.utf8Data ?? '';
+    loxonePairingMonitor.command(definition.name, connection.socket.remoteAddress ?? null, command);
     this.log.spam('loxone ws message received', {
       name: definition.name,
       command: formatCommand(command),

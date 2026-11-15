@@ -13,6 +13,7 @@ import {
   updatePlayer,
   updateServer,
   updateGroupsConfig,
+  updateTimezone,
 } from '../services/setupApi';
 import { updateContentConfig } from '../services/contentApi';
 import { uploadEventSound } from '../services/eventSoundsApi';
@@ -70,6 +71,15 @@ type TtsDraft = {
 };
 
 const OPENAI_TTS_FORMATS: OpenAiTtsFormat[] = ['mp3', 'opus', 'aac', 'flac', 'wav'];
+
+const TIMEZONES: string[] = (() => {
+  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+  try {
+    return intl.supportedValuesOf?.('timeZone') ?? [];
+  } catch {
+    return [];
+  }
+})();
 
 /**
  * Rows the user has not finished are not sent: a code without a voice, or the
@@ -191,6 +201,8 @@ export default function SetupView(): JSX.Element {
   const [adminUiUpdating, setAdminUiUpdating] = React.useState(false);
   const [crossfadeDraft, setCrossfadeDraft] = React.useState('');
   const [crossfadeSaving, setCrossfadeSaving] = React.useState(false);
+  const [timezoneDraft, setTimezoneDraft] = React.useState('');
+  const [timezoneSaving, setTimezoneSaving] = React.useState(false);
   const [adminUiUpdatedAt, setAdminUiUpdatedAt] = React.useState<string | null>(null);
   const [adminUiUpdateRelease, setAdminUiUpdateRelease] = React.useState<string | null>(null);
   const [serverUpdating, setServerUpdating] = React.useState(false);
@@ -904,6 +916,25 @@ export default function SetupView(): JSX.Element {
     }
   }
 
+  async function persistTimezone(): Promise<void> {
+    const next = timezoneDraft.trim();
+    if (!next || next === status?.timezone || timezoneSaving) return;
+    setTimezoneSaving(true);
+    try {
+      await updateTimezone(next);
+      setStatus(await fetchStatus());
+      setTimezoneDraft('');
+    } catch (err) {
+      pushAlert({
+        tone: 'error',
+        title: t('setup.server.timezoneFailedTitle'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTimezoneSaving(false);
+    }
+  }
+
   async function persistCrossfade(): Promise<void> {
     if (crossfadeSaving) return;
     const next = Number(crossfadeDraft);
@@ -1166,6 +1197,44 @@ export default function SetupView(): JSX.Element {
                 <span className="setup-facts__label">{t('setup.diagnostics.runtime')}</span>
                 <span className="setup-facts__value setup-facts__value--muted">{runtimeLabel}</span>
               </div>
+              <div className="setup-facts__item">
+                <span className="setup-facts__label">{t('setup.server.rowTimezone')}</span>
+                <span className="setup-facts__value">
+                  {status?.timezone
+                    ? `${status.timezone} (UTC${status.utcOffset ?? ''})`
+                    : '—'}
+                </span>
+              </div>
+            </div>
+            <div className="setup-timezone">
+              <input
+                className="setup-timezone__input"
+                list="setup-timezones"
+                placeholder={status?.timezone ?? 'Europe/Berlin'}
+                value={timezoneDraft}
+                onChange={(e) => setTimezoneDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void persistTimezone();
+                }}
+                disabled={timezoneSaving}
+                aria-label={t('setup.server.rowTimezone')}
+              />
+              <datalist id="setup-timezones">
+                {TIMEZONES.map((zone) => (
+                  <option key={zone} value={zone} />
+                ))}
+              </datalist>
+              <button
+                type="button"
+                className="setup-btn"
+                onClick={() => void persistTimezone()}
+                disabled={timezoneSaving || !timezoneDraft.trim() || timezoneDraft.trim() === status?.timezone}
+              >
+                {timezoneSaving ? t('setup.server.timezoneSaving') : t('setup.server.timezoneSave')}
+              </button>
+              <span className="setup-timezone__hint">
+                {standalone ? t('setup.server.timezoneHint') : t('setup.server.timezoneHintLoxone')}
+              </span>
             </div>
           </section>
 

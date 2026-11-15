@@ -16,6 +16,7 @@ import type {
 } from '@/domain/config/types';
 import { defaultMacId, normalizeMacId } from '@/shared/utils/mac';
 import { defaultLocalIp } from '@/shared/utils/net';
+import { applyTimezone, isValidTimezone } from '@/shared/time/timezone';
 import type { Route } from '@/adapters/http/adminApi/routeTypes';
 
 export type ConfigHandlerDeps = {
@@ -396,6 +397,7 @@ async function handleSystemUpdate(
           setupComplete?: boolean;
           managedPlayers?: boolean;
           crossfadeSec?: number;
+          timezone?: string;
         };
         miniserver?: { ip?: string; port?: number; protocol?: 'http' | 'https' };
       }
@@ -421,6 +423,7 @@ async function handleSystemUpdate(
   const rawSetupComplete = hasAudioserver ? body.audioserver!.setupComplete : undefined;
   const rawManagedPlayers = hasAudioserver ? body.audioserver!.managedPlayers : undefined;
   const rawCrossfadeSec = hasAudioserver ? body.audioserver!.crossfadeSec : undefined;
+  const rawTimezone = hasAudioserver ? body.audioserver!.timezone : undefined;
   const rawMiniserverIp = hasMiniserver ? body.miniserver!.ip : undefined;
   const rawMiniserverPort = hasMiniserver ? body.miniserver!.port : undefined;
   const rawMiniserverProtocol = hasMiniserver ? body.miniserver!.protocol : undefined;
@@ -432,6 +435,7 @@ async function handleSystemUpdate(
     typeof rawSetupComplete !== 'boolean' &&
     typeof rawManagedPlayers !== 'boolean' &&
     typeof rawCrossfadeSec !== 'number' &&
+    typeof rawTimezone !== 'string' &&
     typeof rawMiniserverIp !== 'string' &&
     typeof rawMiniserverPort !== 'number' &&
     typeof rawMiniserverProtocol !== 'string'
@@ -471,6 +475,14 @@ async function handleSystemUpdate(
       return;
     }
     normalizedCrossfadeSec = rawCrossfadeSec;
+  }
+  let normalizedTimezone: string | null = null;
+  if (typeof rawTimezone === 'string') {
+    if (!isValidTimezone(rawTimezone)) {
+      deps.sendJson(res, 400, { error: 'invalid-timezone' });
+      return;
+    }
+    normalizedTimezone = rawTimezone.trim();
   }
   let normalizedMiniserverIp: string | null = null;
   if (typeof rawMiniserverIp === 'string') {
@@ -525,6 +537,9 @@ async function handleSystemUpdate(
     if (normalizedCrossfadeSec !== null) {
       cfg.system.audioserver.crossfadeSec = normalizedCrossfadeSec;
     }
+    if (normalizedTimezone) {
+      cfg.system.audioserver.timezone = normalizedTimezone;
+    }
     if (typeof rawLoxoneEnabled === 'boolean') {
       cfg.system.audioserver.loxoneEnabled = rawLoxoneEnabled;
     }
@@ -550,6 +565,9 @@ async function handleSystemUpdate(
       cfg.system.miniserver.protocol = normalizedMiniserverProtocol;
     }
   });
+  if (normalizedTimezone) {
+    applyTimezone(normalizedTimezone);
+  }
   deps.sendJson(res, 204, {});
 }
 

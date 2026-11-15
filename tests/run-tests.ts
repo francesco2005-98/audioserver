@@ -212,6 +212,7 @@ import './squeezeliteMemberPause.test';
 import './mixedGroupFanout.test';
 import './loxoneZoneProjection.test';
 import './loxoneConnection.test';
+import './timezone.test';
 import './adminZoneStates.test';
 import './adminInfo.test';
 import './bundleCompat.test';

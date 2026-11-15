@@ -1,4 +1,5 @@
 import { logBuffer } from '@/shared/logging/logBuffer';
+import { localIsoTimestamp } from '@/shared/time/timezone';
 import type { LogLevel } from '@/types/logLevel';
 
 /**
@@ -109,7 +110,7 @@ export class ComponentLogger {
   }
 
   private formatLine(level: LogLevel, message: string, context?: LogContext): string {
-    const ts = new Date().toISOString();
+    const ts = localIsoTimestamp();
     const scope = this.scopes.join('|');
     const ctx = this.formatContext(context);
     return `[${ts}][${level.toUpperCase()}][${scope}]${ctx} ${message}`;
@@ -117,7 +118,7 @@ export class ComponentLogger {
 
   private formatJson(level: LogLevel, message: string, context?: LogContext): string {
     return JSON.stringify({
-      timestamp: new Date().toISOString(),
+      timestamp: localIsoTimestamp(),
       level,
       scopes: this.scopes,
       message,

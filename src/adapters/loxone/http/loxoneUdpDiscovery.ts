@@ -2,6 +2,7 @@ import dgram from 'node:dgram';
 import type { LoxoneHttpConfig } from '@/config/loxone';
 import { createLogger } from '@/shared/logging/logger';
 import type { ConfigPort } from '@/ports/ConfigPort';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 import {
   loxoneAnnouncementHostname,
   loxoneAnnouncementMac,
@@ -86,6 +87,7 @@ export class LoxoneUdpDiscovery {
     responder.on('error', (error) => this.fail('responder', error));
 
     socket.on('message', (_msg, rinfo) => {
+      loxonePairingMonitor.udpProbe(rinfo.address);
       const payload = Buffer.from(this.currentPayload(), 'utf8');
       this.log.info('udp discovery probe received', {
         from: `${rinfo.address}:${rinfo.port}`,
@@ -109,6 +111,7 @@ export class LoxoneUdpDiscovery {
       this.log.info('udp discovery responder ready', { port: responsePort });
     });
     socket.bind(port, () => {
+      loxonePairingMonitor.udpBound();
       this.log.info('udp discovery listener started', { port });
     });
   }
@@ -152,6 +155,7 @@ export class LoxoneUdpDiscovery {
       return;
     }
     this.log.warn('udp discovery socket failed', { role, message: error.message });
+    loxonePairingMonitor.udpBound(error);
     this.socket = null;
     this.responder = null;
     socket?.close();

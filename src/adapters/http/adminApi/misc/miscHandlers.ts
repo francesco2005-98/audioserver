@@ -25,6 +25,8 @@ import type { GroupManagerReadPort } from '@/application/groups/groupManager';
 import type { SnapcastCore } from '@/adapters/outputs/snapcast/snapcastCore';
 import type { Route } from '@/adapters/http/adminApi/routeTypes';
 import type { LoxoneWsNotifier } from '@/adapters/loxone/ws/notifier';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
+import { currentTimezone, localIsoTimestamp, utcOffset } from '@/shared/time/timezone';
 import type { AudioserverCorePeerRegistry } from '@/adapters/discovery/audioserverCorePeerRegistry';
 import { buildAudioServersList } from '@/adapters/discovery/audioServersList';
 import { defaultConfig } from '@/adapters/http/adminApi/config/configHandlers';
@@ -202,6 +204,11 @@ export function buildMiscRoutes(deps: MiscHandlerDeps): Route[] {
       method: 'POST',
       pattern: /^\/setup\/loxone$/,
       handler: async (req, res) => handleLoxoneToggle(req, res, deps),
+    },
+    {
+      method: 'GET',
+      pattern: /^\/setup\/loxone\/pairing$/,
+      handler: async (_req, res) => handleLoxonePairing(res, deps),
     },
     {
       method: 'POST',
@@ -454,6 +461,9 @@ function handleInfo(
       // repository.
       gitBranch: containerized ? null : readGitBranch(),
       uptime: Math.floor(process.uptime()),
+      timezone: currentTimezone(),
+      utcOffset: utcOffset(),
+      serverTime: localIsoTimestamp(),
       name: cfg.system.audioserver.name ?? 'Unconfigured',
       serial: cfg.system.audioserver.macId ?? '',
       firmwareVersion: deps.runtimeConfig.loxone.firmwareVersion,
@@ -572,6 +582,25 @@ async function handleLoxoneToggle(
     deps.log.error('loxone toggle failed', { message });
     deps.sendJson(res, 500, { error: 'loxone-toggle-error', message });
   }
+}
+
+/** Where pairing with the Miniserver got to, for the Loxone window. */
+function handleLoxonePairing(res: ServerResponse, deps: MiscHandlerDeps): void {
+  const cfg = deps.configPort.getConfig();
+  const audioserver = cfg.system?.audioserver;
+  deps.sendJson(res, 200, {
+    ...loxonePairingMonitor.snapshot(),
+    now: Date.now(),
+    enabled: audioserver?.loxoneEnabled === true,
+    paired: audioserver?.paired === true,
+    serial: audioserver?.macId?.trim().toUpperCase() ?? null,
+    ip: audioserver?.ip?.trim() || null,
+    storedCrc32: cfg.rawAudioConfig?.crc32 ?? null,
+    miniserver: {
+      ip: cfg.system?.miniserver?.ip?.trim() || null,
+      serial: cfg.system?.miniserver?.serial?.trim() || null,
+    },
+  });
 }
 
 function handleLogsSnapshot(res: ServerResponse, deps: MiscHandlerDeps): void {
