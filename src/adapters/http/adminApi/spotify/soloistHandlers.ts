@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createLogger } from '@/shared/logging/logger';
+import { advertisableIpv4Addresses } from '@/shared/utils/net';
 import type { ConfigPort } from '@/ports/ConfigPort';
 import type { SpotifyInputService } from '@/adapters/inputs/spotify/spotifyInputService';
 
@@ -90,6 +91,8 @@ export async function handleSoloistStatus(
     hostArch: hostArch(),
     binary,
     accounts,
+    // What Spotify Connect is announced on. A phone in another subnet never sees it.
+    connectAddresses: advertisableIpv4Addresses(),
   });
 }
 

@@ -40,7 +40,12 @@ export function SpotifyAccountRow(props: Props): React.ReactElement {
           }) +
           (status?.pairing?.notice === 'virtual_networks'
             ? ` ${t('content.spotify.playback.virtualNetworks')}`
-            : ''),
+            : '') +
+          (playback.connectAddresses.length > 0
+            ? ` ${t('content.spotify.playback.announcedOn', {
+              addresses: playback.connectAddresses.join(', '),
+            })}`
+            : ` ${t('content.spotify.playback.noLanAddress')}`),
         tone: 'wait',
       };
     }
@@ -69,7 +74,16 @@ export function SpotifyAccountRow(props: Props): React.ReactElement {
       return { text: t('content.spotify.playback.justSignedIn'), tone: 'ok' };
     }
     if (ready) {
-      return { text: t('content.spotify.playback.ready'), tone: 'ok' };
+      return {
+        text:
+          `${t('content.spotify.playback.ready')} ` +
+          (playback.connectAddresses.length > 0
+            ? t('content.spotify.playback.announcedOn', {
+              addresses: playback.connectAddresses.join(', '),
+            })
+            : t('content.spotify.playback.noLanAddress')),
+        tone: playback.connectAddresses.length > 0 ? 'ok' : 'warn',
+      };
     }
     return { text: t('content.spotify.playback.browseOnly'), tone: 'warn' };
   })();

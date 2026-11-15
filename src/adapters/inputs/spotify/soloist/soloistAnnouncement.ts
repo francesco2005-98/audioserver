@@ -1,6 +1,7 @@
 import { createLogger } from '@/shared/logging/logger';
 import { advertisableIpv4Addresses } from '@/shared/utils/net';
 import dgram from 'node:dgram';
+import fsp from 'node:fs/promises';
 import { decode, encode, type Record as DnsRecord } from 'dns-packet';
 
 const log = createLogger('Input', 'SoloistAnnounce');
@@ -51,6 +52,49 @@ export function noteSoloistLine(sighting: ConnectSighting, line: string): Connec
     next.mdnsFailed = true;
   }
   return next;
+}
+
+/**
+ * TCP ports a process is listening on, read from `/proc`.
+ *
+ * Soloist names its Zeroconf port only in verbose mode, which this server does not use. Measured
+ * on 1.3.10.71: the process listens on the control port it was given and on one more, which is
+ * the Connect service. Empty off Linux or when the process is already gone.
+ */
+export async function listeningTcpPorts(pid: number): Promise<number[]> {
+  const inodes = new Set<string>();
+  try {
+    for (const fd of await fsp.readdir(`/proc/${pid}/fd`)) {
+      try {
+        const target = await fsp.readlink(`/proc/${pid}/fd/${fd}`);
+        const inode = /^socket:\[(\d+)\]$/.exec(target)?.[1];
+        if (inode) inodes.add(inode);
+      } catch {
+        // The descriptor closed between the listing and the read.
+      }
+    }
+  } catch {
+    return [];
+  }
+  const ports = new Set<number>();
+  for (const table of ['tcp', 'tcp6']) {
+    let text = '';
+    try {
+      text = await fsp.readFile(`/proc/${pid}/net/${table}`, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of text.split('\n').slice(1)) {
+      const fields = line.trim().split(/\s+/);
+      const local = fields[1];
+      const state = fields[3];
+      const inode = fields[9];
+      if (!local || state !== '0A' || !inode || !inodes.has(inode)) continue;
+      const port = Number.parseInt(local.split(':').at(-1) ?? '', 16);
+      if (Number.isFinite(port) && port > 0) ports.add(port);
+    }
+  }
+  return [...ports];
 }
 
 /**

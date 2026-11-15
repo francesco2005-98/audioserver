@@ -499,6 +499,8 @@
         "waiting": "Wartet — starte in der Spotify-App ein Lied und öffne unten die Geräteliste über das Lautsprecher-Symbol. Wähle „{{device}}“. Unter Einstellungen → Geräte steht es erst, nachdem es dort einmal verbunden wurde. Das Handy muss im selben Netz sein, und der Eintrag ist nur sichtbar, solange hier „Wartet“ steht.",
         "thisServer": "dieser Server",
         "notPicked": "Niemand hat es rechtzeitig ausgewählt. Starte ein Lied, tippe auf das Lautsprecher-Symbol und wähle es dort — nicht unter Einstellungen → Geräte.",
+        "announcedOn": "Angekündigt im Netz unter {{addresses}}. Das Handy muss eine Adresse im selben Bereich haben, also dieselben ersten drei Zahlen. Ein anderes WLAN, ein Gast-WLAN oder ein eigenes VLAN sieht den Eintrag nicht.",
+        "noLanAddress": "Der Server hat keine Adresse im lokalen Netz, nur interne Docker-Adressen. Dann läuft der Container nicht im Host-Netzwerk, und kein Handy kann ihn finden.",
         "discoveryBusy": "Das Gerät kann nicht erscheinen: die Suche im Netz (Port 5353) ist auf diesem Rechner schon belegt, meist durch Avahi oder einen zweiten Spotify-Player.",
         "virtualNetworks": "Dieser Rechner hat zusätzliche Docker-Netze, und der Adressfilter ist hier nicht installiert. Soloist meldet dann oft eine interne Adresse, und das Handy sieht den Eintrag nicht. Das Handy muss im selben Netz hängen wie die Adresse in der Adresszeile.",
         "wrongAccount": "Als {{user}} angemeldet — das ist ein anderes Spotify-Konto. Melde dich mit dem richtigen an.",

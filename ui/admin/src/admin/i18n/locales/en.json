@@ -499,6 +499,8 @@
         "waiting": "Waiting — start a song in the Spotify app and open the device list from the speaker icon at the bottom. Pick “{{device}}”. Settings → Devices stays empty until it has been connected there once. The phone has to be on the same network, and the entry is only there while this says Waiting.",
         "thisServer": "this server",
         "notPicked": "Nobody picked it in time. Start a song, tap the speaker icon and pick it there — not under Settings → Devices.",
+        "announcedOn": "Announced on the network at {{addresses}}. The phone needs an address in the same range, so the same first three numbers. Another Wi-Fi, a guest Wi-Fi or a separate VLAN does not see the entry.",
+        "noLanAddress": "The server has no address on the local network, only internal Docker addresses. The container is then not on the host network, and no phone can find it.",
         "discoveryBusy": "The device cannot appear: network discovery (port 5353) is already taken on this machine, usually by Avahi or a second Spotify player.",
         "virtualNetworks": "This machine also has Docker networks, and the address filter is not installed here. Soloist then often announces an internal address, and the phone never sees the entry. The phone has to be on the same network as the address in the address bar.",
         "wrongAccount": "Signed in as {{user}} — that is a different Spotify account. Sign in again from the right one.",

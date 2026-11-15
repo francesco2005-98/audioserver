@@ -284,6 +284,8 @@ export type SoloistStatus = {
     error?: string;
   };
   accounts: SoloistAccountStatus[];
+  /** LAN addresses the Connect devices are announced on. */
+  connectAddresses?: string[];
 };
 
 export async function fetchSoloistStatus(): Promise<SoloistStatus> {

@@ -8,6 +8,7 @@ import { createLogger } from '@/shared/logging/logger';
 import { resolveDataDir } from '@/shared/utils/file';
 import { advertisableIpv4Addresses } from '@/shared/utils/net';
 import {
+  listeningTcpPorts,
   noteSoloistLine,
   publishSoloistConnect,
   shouldRepublishConnect,
@@ -614,9 +615,36 @@ function runTracked(
     const lines: string[] = [];
     let sighting: ConnectSighting = {};
     let announced: { stop: () => void } | null = null;
+    let exited = false;
+    let lookingForPort = false;
+    const controlPort = Number(/127\.0\.0\.1:(\d+)/.exec(args.join(' '))?.[1] ?? 0);
+    const pid = child.pid;
+    const announce = (): void => {
+      if (announced || exited || !sighting.deviceName || !sighting.port) return;
+      if (!shouldRepublishConnect(sighting, advertisableIpv4Addresses())) return;
+      announced = publishSoloistConnect(sighting.deviceName, sighting.port);
+    };
+    // The ready line comes before the Connect service is listening, so this asks a few times.
+    const findConnectPort = async (): Promise<void> => {
+      if (lookingForPort || !pid) return;
+      lookingForPort = true;
+      for (let attempt = 0; attempt < 20 && !exited && !sighting.port; attempt += 1) {
+        const ports = (await listeningTcpPorts(pid)).filter((port) => port !== controlPort);
+        if (ports[0]) {
+          sighting = { ...sighting, port: ports[0] };
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (!sighting.port && !exited) {
+        log.warn('could not find the spotify connect port of soloist', { zoneId, what });
+      }
+      announce();
+    };
     const onOutput = (chunk: Buffer): void => {
       const text = chunk.toString('utf8');
       lines.push(text);
+      if (lines.length > 400) lines.splice(0, lines.length - 200);
       const expiry = EXPIRY_RE.exec(text);
       if (expiry?.[1]) {
         resolveExpiry(Number(expiry[1]));
@@ -635,13 +663,9 @@ function runTracked(
           log.debug('soloist', { zoneId, line: trimmed.slice(0, 300) });
           onLine?.(trimmed);
           sighting = noteSoloistLine(sighting, trimmed);
-          if (
-            !announced &&
-            sighting.deviceName &&
-            sighting.port &&
-            shouldRepublishConnect(sighting, advertisableIpv4Addresses())
-          ) {
-            announced = publishSoloistConnect(sighting.deviceName, sighting.port);
+          if (sighting.deviceName) {
+            if (sighting.port) announce();
+            else void findConnectPort();
           }
         }
       }
@@ -655,6 +679,7 @@ function runTracked(
       resolve(null);
     });
     child.on('exit', (code) => {
+      exited = true;
       announced?.stop();
       announced = null;
       resolveExpiry(undefined);

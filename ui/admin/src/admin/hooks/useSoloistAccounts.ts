@@ -38,6 +38,8 @@ export type SoloistAccounts = {
   signIn: (accountId: string) => Promise<void>;
   stop: (accountId: string) => Promise<void>;
   error: string | null;
+  /** LAN addresses the Connect devices are announced on. */
+  connectAddresses: string[];
 };
 
 /**
@@ -167,5 +169,6 @@ export function useSoloistAccounts(enabled: boolean): SoloistAccounts {
     signIn: (accountId) => act(accountId, 'start'),
     stop: (accountId) => act(accountId, 'stop'),
     error,
+    connectAddresses: status?.connectAddresses ?? [],
   };
 }
