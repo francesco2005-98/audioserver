@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from './testHarness';
 import {
+  loadSpotifyProfile,
   resolveSpotifyRedirectUri,
   spotifyRedirectOrigin,
 } from '../src/adapters/content/providers/spotify/serviceAuth';
@@ -16,6 +17,23 @@ test('spotify redirect: loopback stays http, localhost becomes 127.0.0.1', () =>
   assert.equal(spotifyRedirectOrigin('http://127.0.0.1:7090'), 'http://127.0.0.1:7090');
   assert.equal(spotifyRedirectOrigin('http://[::1]:7090'), 'http://[::1]:7090');
   assert.equal(spotifyRedirectOrigin('http://localhost:7090'), 'http://127.0.0.1:7090');
+});
+
+test('spotify profile: a 502 from Spotify is tried again and then accepted', async () => {
+  const bodies = [
+    '{"error":{"status":502,"message":"An unexpected error occurred. Please try again later."}}',
+    '{"id":"user-1","display_name":"Luca","email":"luca@example.com"}',
+  ];
+  const fetchImpl: typeof fetch = async () => {
+    const body = bodies.shift() ?? '';
+    return new Response(body, {
+      status: body.includes('"error"') ? 502 : 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const profile = await loadSpotifyProfile('token', fetchImpl);
+  assert.equal(profile.id, 'user-1');
+  assert.equal(profile.display_name, 'Luca');
 });
 
 test('spotify redirect: https and an explicit redirect are kept as they are', () => {

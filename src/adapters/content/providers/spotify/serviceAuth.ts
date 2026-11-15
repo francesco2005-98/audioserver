@@ -302,27 +302,56 @@ type SpotifyProfile = {
   country?: string;
 };
 
-async function loadSpotifyProfile(accessToken: string): Promise<SpotifyProfile> {
-  const resp = await fetch('https://api.spotify.com/v1/me', {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
-  });
-  const detail = await safeReadText(resp, '', {
-    onError: 'debug',
-    log,
-    label: 'spotify profile response read failed',
-    context: { status: resp.status },
-  });
-  if (!resp.ok) {
-    throw new Error(`Spotify profile request failed (${resp.status}): ${detail.slice(0, 200)}`);
+const PROFILE_RETRY_DELAYS_MS = [0, 600, 1500];
+
+function isTransientSpotifyStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+/**
+ * Spotify's own profile call. A 502 here arrives after the login already
+ * succeeded, and it is often gone a moment later, so it is tried again
+ * before the sign-in is given up.
+ */
+export async function loadSpotifyProfile(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SpotifyProfile> {
+  let lastStatus = 0;
+  let lastDetail = '';
+  for (let attempt = 0; attempt < PROFILE_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delay = PROFILE_RETRY_DELAYS_MS[attempt] ?? 0;
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    const resp = await fetchImpl('https://api.spotify.com/v1/me', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'User-Agent': 'audioserver/1.0.0',
+      },
+    });
+    const detail = await safeReadText(resp, '', {
+      onError: 'debug',
+      log,
+      label: 'spotify profile response read failed',
+      context: { status: resp.status, attempt },
+    });
+    if (resp.ok) {
+      try {
+        return JSON.parse(detail) as SpotifyProfile;
+      } catch {
+        throw new Error('Spotify profile response was not JSON');
+      }
+    }
+    lastStatus = resp.status;
+    lastDetail = detail;
+    if (!isTransientSpotifyStatus(resp.status)) {
+      break;
+    }
+    log.warn('spotify profile request failed, retrying', { status: resp.status, attempt });
   }
-  try {
-    return JSON.parse(detail) as SpotifyProfile;
-  } catch {
-    throw new Error('Spotify profile response was not JSON');
-  }
+  throw new Error(`Spotify profile request failed (${lastStatus}): ${lastDetail.slice(0, 200)}`);
 }
 
 async function persistAccount(configPort: ConfigPort, account: SpotifyAccountConfig): Promise<void> {
