@@ -25,6 +25,11 @@ import { AboutService } from '@/adapters/http/api/aboutService';
 import { BrowseService } from '@/adapters/http/api/browseService';
 import { DestinationService } from '@/adapters/http/api/destinationService';
 import { isLocalRequest } from '@/shared/utils/net';
+import {
+  handleConnectProxy,
+  matchesConnectProxy,
+  setConnectGatewayPort,
+} from '@/adapters/inputs/spotify/soloist/soloistConnectProxy';
 import type { StreamProxyRoute } from '@/shared/streamProxyRoute';
 import type { ZoneManagerFacade } from '@/application/zones/createZoneManager';
 import type { EnginePort } from '@/ports/EnginePort';
@@ -223,6 +228,7 @@ export class HttpService {
     await new Promise<void>((resolve, reject) => {
       listener
         .listen(this.config.port, this.config.host, () => {
+          setConnectGatewayPort(this.config.port);
           this.log.info('http gateway listening', {
             port: this.config.port,
             host: this.config.host,
@@ -381,6 +387,11 @@ export class HttpService {
 
     if (pathname === '/jsonrpc.js') {
       await this.lmsCli.handleJsonRpcRequest(req, res);
+      return;
+    }
+
+    if (matchesConnectProxy(pathname)) {
+      handleConnectProxy(req, res, pathname);
       return;
     }
 

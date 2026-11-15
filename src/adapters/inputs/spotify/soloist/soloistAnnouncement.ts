@@ -3,6 +3,11 @@ import { advertisableIpv4Addresses } from '@/shared/utils/net';
 import dgram from 'node:dgram';
 import fsp from 'node:fs/promises';
 import { decode, encode, type Record as DnsRecord } from 'dns-packet';
+import {
+  allowConnectPort,
+  connectGatewayPort,
+  connectPathFor,
+} from '@/adapters/inputs/spotify/soloist/soloistConnectProxy';
 
 const log = createLogger('Input', 'SoloistAnnounce');
 
@@ -112,7 +117,7 @@ const MULTICAST = '224.0.0.251';
 const MDNS_PORT = 5353;
 const SERVICE = '_spotify-connect._tcp.local';
 
-type Live = { name: string; port: number; fqdn: string; host: string };
+type Live = { name: string; port: number; cpath: string; fqdn: string; host: string };
 
 const live = new Map<string, Live>();
 let socket: dgram.Socket | null = null;
@@ -136,7 +141,7 @@ function recordsFor(entry: Live, addresses: readonly string[]): DnsRecord[] {
       name: entry.fqdn,
       type: 'TXT',
       ttl: 120,
-      data: [Buffer.from('CPath=/zc'), Buffer.from('VERSION=1.0'), Buffer.from('Stack=SP')],
+      data: [Buffer.from(`CPath=${entry.cpath}`), Buffer.from('VERSION=1.0'), Buffer.from('Stack=SP')],
     },
   ];
   for (const address of addresses) {
@@ -271,18 +276,28 @@ function closeSocket(): void {
   }
 }
 
-/** Announce one Soloist on the LAN address, and stop when that process is gone. */
-export function publishSoloistConnect(name: string, port: number): { stop: () => void } {
+/**
+ * Announce one Soloist on the LAN address, and stop when that process is gone.
+ *
+ * Named on the gateway port rather than on Soloist's own: that one changes every start, and a
+ * host firewall blocks it. The gateway passes the request on to `localPort`.
+ */
+export function publishSoloistConnect(name: string, localPort: number): { stop: () => void } {
   const addresses = advertisableIpv4Addresses();
-  const key = `${name}\n${port}`;
-  const host = `audioserver-${port}.local`;
-  live.set(key, { name, port, fqdn: `${instanceName(name)}.${SERVICE}`, host });
-  log.info('announced spotify connect on the lan address', { name, port, addresses });
+  const gateway = connectGatewayPort();
+  const port = gateway || localPort;
+  const cpath = gateway ? connectPathFor(localPort) : '/zc';
+  const unlock = gateway ? allowConnectPort(localPort) : () => undefined;
+  const key = `${name}\n${localPort}`;
+  const host = `audioserver-${localPort}.local`;
+  live.set(key, { name, port, cpath, fqdn: `${instanceName(name)}.${SERVICE}`, host });
+  log.info('announced spotify connect on the lan address', { name, port, cpath, addresses });
   ensureSocket();
   announce();
   return {
     stop: () => {
       live.delete(key);
+      unlock();
       if (live.size === 0) {
         closeSocket();
       }

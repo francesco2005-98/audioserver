@@ -10,6 +10,52 @@ import {
 } from '../src/adapters/inputs/spotify/soloist/soloistPairing';
 import { ifaceFilterActive } from '../src/adapters/inputs/spotify/soloist/soloistProcess';
 import { trackFinished } from '../src/adapters/inputs/spotify/soloist/soloistTrackRun';
+import {
+  allowConnectPort,
+  connectPathFor,
+  handleConnectProxy,
+  matchesConnectProxy,
+} from '../src/adapters/inputs/spotify/soloist/soloistConnectProxy';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+test('spotify connect: the gateway passes getInfo on to an announced soloist only', async () => {
+  const soloist = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ path: req.url, remoteName: 'Audioserver — Küche' }));
+  });
+  await new Promise<void>((resolve) => soloist.listen(0, '127.0.0.1', resolve));
+  const localPort = (soloist.address() as AddressInfo).port;
+  const gateway = http.createServer((req, res) => {
+    const pathname = (req.url ?? '/').split('?')[0] ?? '/';
+    if (matchesConnectProxy(pathname)) handleConnectProxy(req, res, pathname);
+    else res.writeHead(404).end();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, '127.0.0.1', resolve));
+  const gatewayPort = (gateway.address() as AddressInfo).port;
+  const get = (path: string): Promise<{ status: number; body: string }> =>
+    new Promise((resolve, reject) => {
+      http
+        .get({ host: '127.0.0.1', port: gatewayPort, path }, (res) => {
+          let body = '';
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        })
+        .on('error', reject);
+    });
+  try {
+    assert.equal((await get(`${connectPathFor(localPort)}?action=getInfo`)).status, 404);
+    const unlock = allowConnectPort(localPort);
+    const open = await get(`${connectPathFor(localPort)}?action=getInfo`);
+    assert.equal(open.status, 200);
+    assert.deepEqual(JSON.parse(open.body), { path: '/zc?action=getInfo', remoteName: 'Audioserver — Küche' });
+    unlock();
+    assert.equal((await get(`${connectPathFor(localPort)}?action=getInfo`)).status, 404);
+  } finally {
+    gateway.close();
+    soloist.close();
+  }
+});
 
 test('spotify discovery: only Soloist’s own mdns lines count', () => {
   assert.equal(soloistMdnsLine('mdns created successfully'), 'ready');
