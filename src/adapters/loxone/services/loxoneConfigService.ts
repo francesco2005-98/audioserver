@@ -47,12 +47,28 @@ export class LoxoneConfigService {
     return this.notifier;
   }
 
-  public getCurrentConfigInfo(): { crc32: string | null; extensions: unknown[] } {
+  public getCurrentConfigInfo(): { crc32: string | null; extensions: Array<{ serial: string; name: string }> } {
     const cfg = this.config.getConfig();
     return {
       crc32: cfg.rawAudioConfig.crc32,
-      extensions: cfg.system.audioserver.extensions ?? [],
+      // The Miniserver addresses an extension by `serial`. The stored record uses `mac`.
+      extensions: (cfg.system.audioserver.extensions ?? []).flatMap((extension) => {
+        const serial = extension.mac?.trim().toUpperCase();
+        if (!serial) return [];
+        return [{ serial, name: extension.name?.trim() || `Stereo Extension ${serial.slice(-4)}` }];
+      }),
     };
+  }
+
+  /** Registers one more Stereo Extension and returns its serial. The Miniserver learns it from getconfig. */
+  public async addExtension(name?: string): Promise<{ mac: string; name: string }> {
+    const created = await addAudioserverExtension(this.config, name);
+    this.log.info('stereo extension added', created);
+    return created;
+  }
+
+  public async removeExtension(mac: string): Promise<void> {
+    await removeAudioserverExtension(this.config, mac);
   }
 
   public async setRawAudioConfig(payload: RawConfigPayload): Promise<string | null> {
@@ -267,7 +283,6 @@ export class LoxoneConfigService {
       if (baseMac) {
         seen.add(baseMac);
       }
-      let fallbackIndex = 1;
 
       cfg.system.audioserver.extensions = section.extensions
         .map((entry: any) => {
@@ -275,12 +290,7 @@ export class LoxoneConfigService {
           const extName = this.normalizeString(entry?.name);
 
           if (!mac || seen.has(mac)) {
-            mac = this.computeExtensionSerial(baseMac, fallbackIndex);
-            fallbackIndex += 1;
-            while (mac && seen.has(mac)) {
-              mac = this.computeExtensionSerial(baseMac, fallbackIndex);
-              fallbackIndex += 1;
-            }
+            mac = nextExtensionSerial(baseMac, [...seen]) ?? undefined;
           }
 
           if (!mac) {
@@ -327,19 +337,6 @@ export class LoxoneConfigService {
     }
     if (masterSerial) {
       cfg.system.miniserver.serial = masterSerial;
-    }
-  }
-
-  private computeExtensionSerial(baseMac: string, index: number): string | undefined {
-    const normalized = baseMac.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
-    if (!normalized) return undefined;
-    const offset = BigInt(Math.max(0, index));
-    try {
-      const baseValue = BigInt(`0x${normalized}`);
-      const next = baseValue + offset;
-      return next.toString(16).toUpperCase().padStart(normalized.length, '0');
-    } catch {
-      return undefined;
     }
   }
 
@@ -475,4 +472,65 @@ export class LoxoneConfigService {
     return trimmed;
   }
 
+}
+
+const MAX_EXTENSIONS = 10;
+
+export async function addAudioserverExtension(
+  configPort: ConfigPort,
+  name?: string,
+): Promise<{ mac: string; name: string }> {
+  let created: { mac: string; name: string } | null = null;
+  await configPort.updateConfig((cfg) => {
+    const base = cfg.system.audioserver.macId ?? '';
+    const existing = cfg.system.audioserver.extensions ?? [];
+    if (existing.length >= MAX_EXTENSIONS) {
+      throw new Error('extension-limit');
+    }
+    const serial = nextExtensionSerial(base, existing.map((entry) => entry.mac));
+    if (!serial) {
+      throw new Error('extension-serial');
+    }
+    created = { mac: serial, name: name?.trim() || `Stereo Extension ${existing.length + 1}` };
+    cfg.system.audioserver.extensions = [...existing, created];
+  });
+  if (!created) {
+    throw new Error('extension-serial');
+  }
+  return created;
+}
+
+export async function removeAudioserverExtension(configPort: ConfigPort, mac: string): Promise<void> {
+  const needle = mac.replace(/[^0-9A-F]/gi, '').toUpperCase();
+  if (!needle) {
+    throw new Error('extension-serial');
+  }
+  await configPort.updateConfig((cfg) => {
+    cfg.system.audioserver.extensions = (cfg.system.audioserver.extensions ?? []).filter(
+      (entry) => entry.mac?.replace(/[^0-9A-F]/gi, '').toUpperCase() !== needle,
+    );
+  });
+}
+
+/** The next free serial after the Audioserver's own, skipping any already taken. */
+export function nextExtensionSerial(baseMac: string, taken: Array<string | undefined>): string | null {
+  const normalized = baseMac.replace(/[^0-9A-F]/gi, '').toUpperCase();
+  if (!/^[0-9A-F]{12}$/.test(normalized)) {
+    return null;
+  }
+  const used = new Set(
+    taken
+      .map((value) => value?.replace(/[^0-9A-F]/gi, '').toUpperCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+  used.add(normalized);
+  let value = BigInt(`0x${normalized}`);
+  for (let step = 0; step < 64; step += 1) {
+    value += 1n;
+    const serial = value.toString(16).toUpperCase().padStart(normalized.length, '0');
+    if (!used.has(serial)) {
+      return serial;
+    }
+  }
+  return null;
 }

@@ -139,6 +139,16 @@
   letter-spacing: -0.2px;
 }
 
+.zones-device__remove {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.zones-device__remove:hover { color: var(--danger, #f87171); }
 .zones-device__meta {
   display: inline-flex;
   align-items: center;

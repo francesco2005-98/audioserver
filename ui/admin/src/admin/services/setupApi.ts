@@ -115,6 +115,22 @@ export async function fetchLoxonePairing(): Promise<LoxonePairingStatus> {
   });
 }
 
+export async function addAudioserverExtension(): Promise<void> {
+  await requestOk(`${API_BASE}/config/extensions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+    errorMessage: 'Failed to add the extension',
+  });
+}
+
+export async function removeAudioserverExtension(mac: string): Promise<void> {
+  await requestOk(`${API_BASE}/config/extensions/${encodeURIComponent(mac)}`, {
+    method: 'DELETE',
+    errorMessage: 'Failed to remove the extension',
+  });
+}
+
 export async function updateManagedPlayers(managedPlayers: boolean): Promise<void> {
   await requestOk(`${API_BASE}/config/system`, {
     method: 'POST',

@@ -5,6 +5,8 @@ import './ZonesView.css';
 import { fetchSoloistStatus } from '../services/contentApi';
 import {
   getConfig,
+  addAudioserverExtension,
+  removeAudioserverExtension,
   updateAudioServerMacId,
   updateGroupsConfig,
   updateManagedPlayers,
@@ -145,12 +147,6 @@ interface ZoneGroup {
   filteredEmpty?: boolean;
 }
 
-interface ExtensionPlaceholder {
-  index: number;
-  serial: string;
-  label: string;
-}
-
 /** Crossed-out circle: no player layer at all. */
 function DisabledIcon(): JSX.Element {
   return (
@@ -216,7 +212,8 @@ export default function ZonesView(): JSX.Element {
   const [addingZone, setAddingZone] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [extensionPlaceholders, setExtensionPlaceholders] = React.useState<ExtensionPlaceholder[]>([]);
+  const [storedExtensions, setStoredExtensions] = React.useState<AudioServerExtension[]>([]);
+  const [extensionSaving, setExtensionSaving] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [activeZoneModal, setActiveZoneModal] = React.useState<{
     zoneId: number;
@@ -269,6 +266,7 @@ export default function ZonesView(): JSX.Element {
       const hasAccounts = spotifyAccounts.length > 0;
       setHasSpotifyAccounts(hasAccounts);
       setBaseSerial(base);
+      setStoredExtensions(data.config?.system?.audioserver?.extensions ?? []);
       setServerIp(data.config?.system?.audioserver?.ip?.trim() ?? '');
       setPowerGroups(Array.isArray(data.config?.groups?.powerGroups) ? data.config?.groups?.powerGroups : []);
       setTransportDefinitions(definitions);
@@ -454,14 +452,19 @@ export default function ZonesView(): JSX.Element {
   }, []);
 
   const displayGroups = React.useMemo(() => {
-    const placeholders: ZoneGroup[] = extensionPlaceholders.map((ph) => ({
-      key: `placeholder-${ph.index}`,
-      label: ph.label,
-      sourceSerial: ph.serial,
-      zones: [],
-    }));
-    return [...zoneGroups, ...placeholders];
-  }, [zoneGroups, extensionPlaceholders]);
+    const present = new Set(zoneGroups.map((group) => group.sourceSerial?.replace(/[^0-9A-Fa-f]/g, '').toUpperCase()));
+    const extras: ZoneGroup[] = storedExtensions.flatMap((extension, index) => {
+      const serial = extension.mac?.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+      if (!serial || present.has(serial)) return [];
+      return [{
+        key: `extension-${serial}`,
+        label: extension.name?.trim() || `Stereo Extension ${index + 1}`,
+        sourceSerial: serial,
+        zones: [],
+      }];
+    });
+    return [...zoneGroups, ...extras];
+  }, [zoneGroups, storedExtensions]);
 
   const filteredGroups = React.useMemo(() => {
     const groups: ZoneGroup[] = [];
@@ -508,31 +511,10 @@ export default function ZonesView(): JSX.Element {
 
   const MAX_EXTENSION_COUNT = 10;
 
-  const extensionCount = React.useMemo(() => {
-    const configured = zoneGroups.reduce((count, group) => {
-      return extractExtensionIndex(group.label) ? count + 1 : count;
-    }, 0);
-    return configured + extensionPlaceholders.length;
-  }, [zoneGroups, extensionPlaceholders]);
+  const extensionCount = storedExtensions.length;
 
   // Extensions are a Loxone-compatibility concept (4 zones per device); standalone has no extensions.
   const canAddExtension = !standalone && Boolean(baseSerial) && extensionCount < MAX_EXTENSION_COUNT;
-
-  function extractExtensionIndex(label: string | undefined): number | null {
-    if (!label) return null;
-    const match = label.match(/extension\s*(\d+)/i);
-    if (!match) return null;
-    const parsed = Number(match[1]);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function computeExtensionSerial(base: string, index: number): string {
-    if (!base) return '';
-    const value = parseInt(base, 16);
-    if (!Number.isFinite(value)) return '';
-    const hex = (value + index).toString(16).toUpperCase();
-    return hex.padStart(base.length, '0');
-  }
 
   function formatSerial(serial?: string): string {
     if (!serial) return '';
@@ -541,9 +523,9 @@ export default function ZonesView(): JSX.Element {
   }
 
 
-  function handleAddExtension(): void {
+  async function handleAddExtension(): Promise<void> {
+    if (extensionSaving) return;
     if (!canAddExtension) {
-      if (!baseSerial) return;
       pushAlert({
         tone: 'warn',
         title: t('zones.extensionLimitTitle'),
@@ -551,32 +533,36 @@ export default function ZonesView(): JSX.Element {
       });
       return;
     }
-    const indexes = new Set<number>();
-    zoneGroups.forEach((g) => {
-      const idx = extractExtensionIndex(g.label);
-      if (idx && idx > 0) indexes.add(idx);
-    });
-    extensionPlaceholders.forEach((ph) => {
-      if (ph.index && ph.index > 0) indexes.add(ph.index);
-    });
-    let highest = 0;
-    indexes.forEach((v) => {
-      if (v > highest) highest = v;
-    });
-    if (indexes.size >= MAX_EXTENSION_COUNT) {
+    setExtensionSaving(true);
+    try {
+      await addAudioserverExtension();
+      await refreshZones(undefined, true);
+    } catch (err) {
       pushAlert({
-        tone: 'warn',
-        title: t('zones.extensionLimitTitle'),
-        message: t('zones.extensionLimitMessage', { max: MAX_EXTENSION_COUNT }),
+        tone: 'error',
+        title: t('zones.extensionFailedTitle'),
+        message: err instanceof Error ? err.message : String(err),
       });
-      return;
+    } finally {
+      setExtensionSaving(false);
     }
-    const next = highest + 1;
-    const serial = computeExtensionSerial(baseSerial, next);
-    setExtensionPlaceholders((prev) => [
-      ...prev,
-      { index: next, serial, label: t('zones.extensionDefaultName', { index: next }) },
-    ]);
+  }
+
+  async function handleRemoveExtension(serial: string): Promise<void> {
+    if (extensionSaving) return;
+    setExtensionSaving(true);
+    try {
+      await removeAudioserverExtension(serial);
+      await refreshZones(undefined, true);
+    } catch (err) {
+      pushAlert({
+        tone: 'error',
+        title: t('zones.extensionRemoveFailedTitle'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setExtensionSaving(false);
+    }
   }
 
   const definitionMap = React.useMemo(() => {
@@ -1131,12 +1117,22 @@ export default function ZonesView(): JSX.Element {
                         <span>{formattedMac}</span>
                       </>
                     ) : null}
+                    {!isAudioServer && group.zones.length === 0 ? (
+                      <button
+                        type="button"
+                        className="zones-device__remove"
+                        onClick={() => void handleRemoveExtension(macId)}
+                        disabled={extensionSaving}
+                      >
+                        {t('zones.removeExtension')}
+                      </button>
+                    ) : null}
                   </div>
                 </header>
 
                 {group.zones.length === 0 ? (
                   <div style={{ padding: '4px 12px 12px', color: 'var(--text-dim)', fontSize: 'var(--fs-xs)' }}>
-                    {t('zones.noZonesForDevice')}
+                    {isAudioServer ? t('zones.noZonesForDevice') : t('zones.extensionWaiting', { serial: formattedMac || macId })}
                   </div>
                 ) : (
                   <div className="zones-device__zones">
@@ -1371,8 +1367,8 @@ export default function ZonesView(): JSX.Element {
             <button
               type="button"
               className="zones-add-extension"
-              onClick={handleAddExtension}
-              disabled={!canAddExtension || saving}
+              onClick={() => void handleAddExtension()}
+              disabled={!canAddExtension || saving || extensionSaving}
             >
               <span className="zones-add-extension__icon">+</span>
               {t('zones.addExtension')}

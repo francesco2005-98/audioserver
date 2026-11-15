@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from './testHarness';
 import { loadEnvironment } from '../src/config/environment';
 import { buildLoxoneHttpConfig, loxoneIdentification } from '../src/config/loxone';
-import { LoxoneConfigService } from '../src/adapters/loxone/services/loxoneConfigService';
+import { LoxoneConfigService, nextExtensionSerial } from '../src/adapters/loxone/services/loxoneConfigService';
 import { loxonePairingMonitor } from '../src/adapters/loxone/pairingMonitor';
 import {
   buildLoxoneDiscoveryPayload,
@@ -242,6 +242,18 @@ test('a project pushed under the serial of an earlier installation is taken over
   const system = store.getSystemConfig();
   assert.equal(system.audioserver.macId, 'BC241107FD5B');
   assert.equal(system.audioserver.paired, true);
+});
+
+test('an added extension gets the next serial and is reported to the Miniserver by serial', async () => {
+  assert.equal(nextExtensionSerial('00D861FD1135', []), '00D861FD1136');
+  assert.equal(nextExtensionSerial('00:D8:61:FD:11:35', ['00D861FD1136']), '00D861FD1137');
+  const store = fakeConfigStore(pairingConfig('00D861FD1135'));
+  const service = new LoxoneConfigService(zonesStub, store, contentStub, {} as never);
+  const created = await service.addExtension();
+  assert.equal(created.mac, '00D861FD1136');
+  assert.deepEqual(service.getCurrentConfigInfo().extensions, [
+    { serial: '00D861FD1136', name: 'Stereo Extension 1' },
+  ]);
 });
 
 test('a project for several other audioservers is not claimed', async () => {

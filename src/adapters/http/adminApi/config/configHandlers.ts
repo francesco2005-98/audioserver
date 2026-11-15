@@ -17,6 +17,10 @@ import type {
 import { defaultMacId, normalizeMacId } from '@/shared/utils/mac';
 import { defaultLocalIp } from '@/shared/utils/net';
 import { applyTimezone, isValidTimezone } from '@/shared/time/timezone';
+import {
+  addAudioserverExtension,
+  removeAudioserverExtension,
+} from '@/adapters/loxone/services/loxoneConfigService';
 import type { Route } from '@/adapters/http/adminApi/routeTypes';
 
 export type ConfigHandlerDeps = {
@@ -109,6 +113,8 @@ export function buildConfigRoutes(deps: ConfigHandlerDeps): Route[] {
     { method: 'DELETE', pattern: /^\/config\/zones\/(\d+)$/, handler: async (_req, res, match) => handleZoneDelete(Number(match[1]), res, deps) },
     { method: 'POST', pattern: /^\/config\/inputs$/, handler: async (req, res) => handleInputsUpdate(req, res, deps) },
     { method: 'POST', pattern: /^\/config\/system$/, handler: async (req, res) => handleSystemUpdate(req, res, deps) },
+    { method: 'POST', pattern: /^\/config\/extensions$/, handler: async (req, res) => handleExtensionAdd(req, res, deps) },
+    { method: 'DELETE', pattern: /^\/config\/extensions\/([^/]+)$/, handler: async (_req, res, match) => handleExtensionRemove(decodeURIComponent(match[1] ?? ''), res, deps) },
     { method: 'POST', pattern: /^\/config\/groups$/, handler: async (req, res) => handleGroupsUpdate(req, res, deps) },
     { method: 'POST', pattern: /^\/config\/content$/, handler: async (req, res) => handleContentUpdate(req, res, deps) },
     { method: 'POST', pattern: /^\/config\/import$/, handler: async (req, res) => handleImport(req, res, deps) },
@@ -569,6 +575,39 @@ async function handleSystemUpdate(
     applyTimezone(normalizedTimezone);
   }
   deps.sendJson(res, 204, {});
+}
+
+async function handleExtensionAdd(
+  req: IncomingMessage,
+  res: ServerResponse,
+  deps: ConfigHandlerDeps,
+): Promise<void> {
+  const body = (await deps.readJsonBody(req, res)) as { name?: string } | null;
+  if (res.writableEnded) return;
+  try {
+    const created = await addAudioserverExtension(
+      deps.configPort,
+      typeof body?.name === 'string' ? body.name : undefined,
+    );
+    deps.sendJson(res, 200, { extension: created, extensions: deps.configPort.getConfig().system.audioserver.extensions });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = message === 'extension-limit' ? 409 : 400;
+    deps.sendJson(res, status, { error: message });
+  }
+}
+
+async function handleExtensionRemove(
+  mac: string,
+  res: ServerResponse,
+  deps: ConfigHandlerDeps,
+): Promise<void> {
+  try {
+    await removeAudioserverExtension(deps.configPort, mac);
+    deps.sendJson(res, 200, { extensions: deps.configPort.getConfig().system.audioserver.extensions });
+  } catch (err) {
+    deps.sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 async function handleGroupsUpdate(
