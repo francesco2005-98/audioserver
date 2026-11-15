@@ -6,6 +6,13 @@ import net from 'node:net';
 import path from 'node:path';
 import { createLogger } from '@/shared/logging/logger';
 import { resolveDataDir } from '@/shared/utils/file';
+import { advertisableIpv4Addresses } from '@/shared/utils/net';
+import {
+  noteSoloistLine,
+  publishSoloistConnect,
+  shouldRepublishConnect,
+  type ConnectSighting,
+} from '@/adapters/inputs/spotify/soloist/soloistAnnouncement';
 
 const log = createLogger('Audio', 'SoloistProcess');
 
@@ -517,29 +524,26 @@ export function startPersistent(params: {
 }
 
 /**
- * Play exactly one track from one account's store, and be gone.
+ * Play from one account's store, as a Connect device the Spotify app can see.
  *
- * The whole reason this shape exists: the run ends when the track ends, so the end of a track is a
- * process exiting rather than something to be inferred from events that mean two things. It
- * advertises nothing, starts with shuffle and repeat off, and cannot be taken over — and because
- * the account is a directory rather than a session to be switched, playing from a different
- * account is nothing more than starting from a different one.
+ * `--single-track` plays the URI and exits with it, which is a clean end of track, and it also
+ * turns discovery off. Measured on 1.3.10.71: `enable_discovery_server: 0`. The room is then
+ * sounding and the Spotify app has no device to show. This run is the ordinary daemon instead,
+ * under the room's name, and the track is handed to it over the control channel. The process is
+ * stopped when that track is over, which is still what advances the queue.
  */
 export function startSingleTrack(params: {
   /** For the log file only; a run belongs to the room it is sounding in. */
   zoneId: number;
   store: SoloistStore;
-  uri: string;
   apiKey: string;
   deviceName: string;
   wsPort: number;
   env: Record<string, string>;
   onLine?: (line: string) => void;
 }): SoloistRunHandle {
-  const { zoneId, store, uri, apiKey, deviceName, wsPort, env, onLine } = params;
+  const { zoneId, store, apiKey, deviceName, wsPort, env, onLine } = params;
   const args = [
-    '-s', uri,
-    // Required even here, where nothing is ever advertised under it.
     '-n', deviceName,
     '-k', apiKey,
     '-D', store.data,
@@ -547,8 +551,6 @@ export function startSingleTrack(params: {
     // Bounded rather than the default of no limit: this store is written to on every track.
     '-z', CACHE_LIMIT_MB,
     '-w', `127.0.0.1:${wsPort}`,
-    // Nothing advertises this run, so the number is never seen by anybody; full scale is simply
-    // what it is true to say about a run that attenuates nothing.
     '-i', '100',
   ];
   return runTracked(zoneId, args, env, 'track', onLine);
@@ -560,7 +562,7 @@ export function startSingleTrack(params: {
  * `--pair` is Soloist advertising itself under a name, waiting for someone to pick it in their
  * Spotify app, storing what that hands it, and exiting. The same handshake a room goes through,
  * except that here it is done deliberately and the credentials it leaves behind are the whole
- * point — a `--single-track` run advertises nothing, so there is nobody to ask at play time.
+ * point. Playback is its own Connect device, under the room's name, so the app can show it.
  */
 export function startPairing(params: {
   store: SoloistStore;
@@ -610,6 +612,8 @@ function runTracked(
 
     const logPath = logPathFor(zoneId);
     const lines: string[] = [];
+    let sighting: ConnectSighting = {};
+    let announced: { stop: () => void } | null = null;
     const onOutput = (chunk: Buffer): void => {
       const text = chunk.toString('utf8');
       lines.push(text);
@@ -630,6 +634,15 @@ function runTracked(
         if (trimmed) {
           log.debug('soloist', { zoneId, line: trimmed.slice(0, 300) });
           onLine?.(trimmed);
+          sighting = noteSoloistLine(sighting, trimmed);
+          if (
+            !announced &&
+            sighting.deviceName &&
+            sighting.port &&
+            shouldRepublishConnect(sighting, advertisableIpv4Addresses())
+          ) {
+            announced = publishSoloistConnect(sighting.deviceName, sighting.port);
+          }
         }
       }
     };
@@ -642,6 +655,8 @@ function runTracked(
       resolve(null);
     });
     child.on('exit', (code) => {
+      announced?.stop();
+      announced = null;
       resolveExpiry(undefined);
       if (code === SOLOIST_EXIT_EXPIRED) {
         fault = 'expired';

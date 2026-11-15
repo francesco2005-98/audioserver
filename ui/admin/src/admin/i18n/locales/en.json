@@ -494,7 +494,7 @@
       },
       "clientIdLink": "Open the dashboard →",
       "playback": {
-        "ready": "Can browse and play in your rooms.",
+        "ready": "Can browse and play in your rooms. In the Spotify app the room that is playing shows up as “Audioserver — room name” in the speaker menu, not under Settings → Devices.",
         "browseOnly": "Can browse, but cannot play yet — sign in once from your Spotify app.",
         "waiting": "Waiting — start a song in the Spotify app, tap the speaker icon at the bottom and pick “{{device}}”. Not Settings → Devices: that list only shows devices already signed in. The phone has to be on the same network, and the entry is only there while this says Waiting.",
         "thisServer": "this server",

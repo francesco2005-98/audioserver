@@ -531,9 +531,50 @@ export class SoloistPlaybackService {
     return accountStore(accountId);
   }
 
+  /**
+   * Take the idle Connect daemon down so the run that is about to play is the only device.
+   *
+   * Removed from the map first: its exit would otherwise stop whatever run replaced it.
+   */
+  private async retireRunner(zoneId: number): Promise<void> {
+    const runner = this.runners.get(zoneId);
+    if (!runner) {
+      return;
+    }
+    this.runners.delete(zoneId);
+    runner.ws.close();
+    runner.handle.stop();
+    await Promise.race([
+      runner.handle.done.then(() => undefined),
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 5_000);
+        timer.unref?.();
+      }),
+    ]);
+  }
+
+  /**
+   * Bring the idle device back once the queue has actually let go of the room.
+   *
+   * The next track, when there is one, starts within this window and is itself the device.
+   * Starting the idle daemon as well would put the room in the Spotify app twice.
+   */
+  private restoreIdleDevice(zoneId: number): void {
+    const timer = setTimeout(() => {
+      if (this.runners.has(zoneId) || this.orphanRuns.has(zoneId)) {
+        return;
+      }
+      void this.ensureRunner(zoneId);
+    }, 2_000);
+    timer.unref?.();
+  }
+
   private zoneName(zoneId: number): string {
     const zone = this.configPort.getConfig()?.zones?.find((z) => z.id === zoneId);
-    return zone?.name?.trim() || `Audioserver Zone ${zoneId}`;
+    const name = zone?.name?.trim() || `Zone ${zoneId}`;
+    // The account sign-in uses the same prefix. A room named only "Küche" is easy to miss
+    // in the Spotify speaker list, next to the phone and every other speaker in the house.
+    return name.startsWith('Audioserver') ? name : `Audioserver — ${name}`;
   }
 
   /** Start this zone's Soloist and connect to it, or return the one already running. */
@@ -627,6 +668,12 @@ export class SoloistPlaybackService {
     // If the process dies the control channel goes with it; drop the runner so the next play
     // starts a fresh one rather than talking into a closed socket.
     void handle.done.then(() => {
+      // A queue playback retires this daemon on purpose and then starts its own device.
+      // The exit of the one that was retired must not take that new run down with it.
+      if (this.runners.get(zoneId) !== runner) {
+        ws.close();
+        return;
+      }
       this.log.info('soloist exited; zone will restart it on the next track', { zoneId });
       ws.close();
       this.finishTrack(zoneId);
@@ -1031,26 +1078,17 @@ export class SoloistPlaybackService {
     }
 
     // Whatever was sounding is over, and this server is deciding again — even if the app had taken
-    // the zone over a moment ago. The Connect daemon is left running: it is what keeps the room
-    // pickable in the app, and from here on nothing it says is about this room's music.
+    // the zone over a moment ago. The idle Connect daemon would advertise the same room name as
+    // the run that is about to play, so it steps aside for as long as the queue holds the room.
     const runner = this.runners.get(zoneId);
     this.finishTrack(zoneId);
+    if (runner) {
+      await this.retireRunner(zoneId);
+    }
     // The store this run needs is the account's, and its lock outlives the kill by a moment —
     // whether the room letting go is this one or another. Waiting here is what makes a skip work,
     // and what makes an account follow a listener from one room to the next.
     await this.releaseAccount(account, zoneId);
-    if (runner) {
-      runner.owner = 'queue';
-      runner.currentTrack = null;
-      runner.currentUri = null;
-      if (runner.ws.isActive) {
-        // Only when it holds the account: a room the app was playing into has to let go, or two
-        // players end up talking to one sound card and the first one to have connected is dropped
-        // mid-track without ever being told.
-        runner.ws.pause();
-        runner.ws.deactivate();
-      }
-    }
     // The player behind this card is replaced on every track, so what the last one played in says
     // nothing about the next: without forgetting it, the format is answered before its player has
     // even connected.
@@ -1089,6 +1127,7 @@ export class SoloistPlaybackService {
         reason: started.failure,
       });
       this.lastFailure = started.failure;
+      void this.ensureRunner(zoneId);
       if (started.failure === 'expired') {
         // A build past its ninety days exits the moment it starts, and the daily check may be
         // hours away. Fetching now is what makes the next track work instead of every track until
@@ -1098,13 +1137,8 @@ export class SoloistPlaybackService {
       return null;
     }
     this.lastFailure = null;
-    if (runner) {
-      runner.track = started.run;
-    } else {
-      // A room with no Connect daemon still plays: the daemon is what makes it appear in the app,
-      // not what makes it sound. Kept here so stopping and pausing still find the run.
-      this.orphanRuns.set(zoneId, started.run);
-    }
+    // The run is the Connect device for as long as it plays. There is no idle daemon beside it.
+    this.orphanRuns.set(zoneId, started.run);
 
     // The player opens its stream a moment after it starts sounding, and every track brings a new
     // one, so this waits on every track rather than only the first of a session.
@@ -1120,10 +1154,8 @@ export class SoloistPlaybackService {
     const opened = this.openAudio(zoneId);
     if (!opened) {
       started.run.stop();
+      void this.ensureRunner(zoneId);
       return null;
-    }
-    if (runner) {
-      runner.stream = opened.stream;
     }
     return opened.source;
   }
@@ -1131,11 +1163,11 @@ export class SoloistPlaybackService {
   /**
    * What became of a track this server put on.
    *
-   * `ended` is left alone on purpose. The room is still hearing the last of the track out of the
-   * output's buffer, and it finishes it on its own clock the way it finishes every track — the
-   * next track's `getPlaybackSource` is what closes the stream, once the room has had what was in
-   * it. The other endings are not endings at all: the room would sit in silence for the rest of a
-   * track that has stopped arriving, so it is told.
+   * `ended` leaves the audio alone on purpose. The room is still hearing the last of the track
+   * out of the output's buffer, and it finishes it on its own clock — the next track's
+   * `getPlaybackSource` is what closes the stream. The idle Connect device comes back only if
+   * nothing else takes the room in the meantime. The other endings are not endings at all: the
+   * room would sit in silence for the rest of a track that has stopped arriving, so it is told.
    */
   private onTrackEnded(zoneId: number, uri: string, end: TrackRunEnd): void {
     const runner = this.runners.get(zoneId);
@@ -1150,6 +1182,7 @@ export class SoloistPlaybackService {
     this.orphanRuns.delete(zoneId);
     if (end.reason === 'ended' || end.reason === 'stopped') {
       this.log.debug('the soloist run for this track is done', { zoneId, uri, reason: end.reason });
+      this.restoreIdleDevice(zoneId);
       return;
     }
     if (end.reason === 'taken') {
@@ -1160,10 +1193,12 @@ export class SoloistPlaybackService {
         runner.owner = 'idle';
       }
       this.controller?.transport(zoneId, 'stop');
+      this.restoreIdleDevice(zoneId);
       return;
     }
     this.log.warn('spotify playback stopped for this room', { zoneId, uri, detail: end.detail });
     this.controller?.transport(zoneId, 'stop');
+    this.restoreIdleDevice(zoneId);
   }
 
   /**
@@ -1276,8 +1311,9 @@ export class SoloistPlaybackService {
     if (!runner) {
       // A room can be playing without a Connect daemon of its own, and its run still has to go:
       // it holds the account, and an account held for a room that stopped listening is one the
-      // next room cannot have.
+      // next room cannot have. The idle device comes back, so the room stays pickable.
       this.finishTrack(zoneId);
+      void this.ensureRunner(zoneId);
       return;
     }
     this.log.debug('stopping soloist playback for zone', { zoneId, reason });

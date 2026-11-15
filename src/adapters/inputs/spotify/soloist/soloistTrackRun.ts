@@ -24,6 +24,37 @@ const SEEK_ALLOWED_TIMEOUT_MS = 10_000;
 const SEEK_GRACE_MS = 3000;
 /** How long a stopped run gets to actually let go of its store before the next track gives up. */
 const STORE_RELEASE_TIMEOUT_MS = 5000;
+/** How close to the end a pause still counts as the track being over, not a listener pausing. */
+const END_PAUSE_MS = 1500;
+
+/**
+ * Whether this report means the track we asked for is over.
+ *
+ * A pause in the middle is not the end: the listener asked for it, and the room has to stay on
+ * this track. A pause on the last moment is the engine sitting at the end instead of exiting,
+ * which `--single-track` used to do for us by going away.
+ */
+export function trackFinished(event: SoloistStateEvent, uri: string, wasActive: boolean): boolean {
+  if (!wasActive) {
+    return false;
+  }
+  const got = event.item?.uri;
+  if (got && got !== uri) {
+    return true;
+  }
+  if (event.status === 'stopped' || event.status === 'idle') {
+    return true;
+  }
+  const duration = event.item?.decorations?.playback?.duration_ms;
+  const position = event.position?.position_ms;
+  return (
+    event.status === 'paused' &&
+    typeof duration === 'number' &&
+    typeof position === 'number' &&
+    duration > 0 &&
+    position >= duration - END_PAUSE_MS
+  );
+}
 
 /** Why a track could not be started, in terms the screen can turn into a sentence. */
 export type TrackRunFailure =
@@ -55,11 +86,10 @@ export type TrackRunStart =
 /**
  * One track, one engine run.
  *
- * `--single-track` restores an account's stored session without advertising anything, plays the
- * one URI with shuffle and repeat off, and exits when it is done. Everything that used to have to
- * be inferred about a track's end follows from that: the process exiting is the end, a foreign
- * track appearing is the engine wandering off in the moment before it exits, and nobody can pause
- * or skip a run that no Spotify app can see.
+ * The run is a Connect device under the room's name, so the Spotify app can show the player
+ * that is actually sounding. `--single-track` would play the URI and then exit, and it turns
+ * discovery off, which is why a room could be playing and still be absent from the app. The URI
+ * is handed over the control channel instead, and the process is stopped when the track is over.
  *
  * It plays into the zone's own sound card, so the pacing, the format and the room are unchanged —
  * only what is on the other end of the card is new on every track.
@@ -130,7 +160,6 @@ export class SoloistTrackRun {
     const handle = startSingleTrack({
       zoneId,
       store,
-      uri,
       apiKey,
       deviceName,
       wsPort,
@@ -170,6 +199,13 @@ export class SoloistTrackRun {
       return fail('no_start');
     }
     if (!(await ws.waitUntilReady(START_TIMEOUT_MS))) {
+      return fail('no_start');
+    }
+    // Without this, `play` is a request to whichever device currently holds the account.
+    if (!ws.activate() || !(await ws.waitUntilActive())) {
+      return fail('no_start');
+    }
+    if (!ws.play(uri)) {
       return fail('no_start');
     }
 
@@ -402,18 +438,12 @@ export class SoloistTrackRun {
       if (typeof event.position?.position_ms === 'number') {
         this.position = event.position.position_ms;
       }
-      const uri = event.item?.uri;
-      if (uri && uri !== this.uri) {
-        log.debug('the engine wandered off; this track is over', {
-          zoneId: this.zoneId,
-          uri: this.uri,
-          wentTo: uri,
-        });
-        void this.stop('ended');
-        return;
-      }
       if (event.is_active === true) {
         this.wasActive = true;
+      }
+      if (trackFinished(event, this.uri, this.wasActive)) {
+        log.debug('the engine finished this track', { zoneId: this.zoneId, uri: this.uri });
+        void this.stop('ended');
         return;
       }
       // Only a `device_changed` is a device changing hands. Every other report carries the flag as

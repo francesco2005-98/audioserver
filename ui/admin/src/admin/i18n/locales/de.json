@@ -494,7 +494,7 @@
       },
       "clientIdLink": "Dashboard öffnen →",
       "playback": {
-        "ready": "Kann durchsuchen und in deinen Räumen abspielen.",
+        "ready": "Kann durchsuchen und in deinen Räumen abspielen. In der Spotify-App steht der Raum, der gerade spielt, als „Audioserver — Raumname“ im Lautsprecher-Menü, nicht unter Einstellungen → Geräte.",
         "browseOnly": "Kann durchsuchen, aber noch nicht abspielen — einmal aus deiner Spotify-App anmelden.",
         "waiting": "Wartet — starte in der Spotify-App ein Lied, tippe unten auf das Lautsprecher-Symbol und wähle „{{device}}“. Nicht unter Einstellungen → Geräte: dort stehen nur schon angemeldete Geräte. Das Handy muss im selben Netz sein, und der Eintrag ist nur sichtbar, solange hier „Wartet“ steht.",
         "thisServer": "dieser Server",
