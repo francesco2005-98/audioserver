@@ -30,18 +30,13 @@ export function Intro({ fading, out, vt = false }: { fading: boolean; out: boole
         wordmark and an accent, so they may as well share the gesture.
       */}
       <div className="intro-glyph">
-        <svg className="intro-mark" viewBox="8 12 84 68" aria-hidden="true">
-          <rect x="20" y="63.1" width="2.17" height="5.78" rx="1.08" />
-          <rect x="25.78" y="59.5" width="2.17" height="13.01" rx="1.08" />
-          <rect x="31.57" y="61.66" width="2.17" height="8.67" rx="1.08" />
-          <rect x="37.35" y="58.05" width="2.17" height="15.9" rx="1.08" />
-          <rect x="46.03" y="56.6" width="2.89" height="18.8" rx="1.45" />
-          <rect x="54.69" y="58.05" width="2.17" height="15.9" rx="1.08" />
-          <rect x="60.48" y="60.94" width="2.17" height="10.12" rx="1.08" />
-          <rect x="66.26" y="58.77" width="2.17" height="14.46" rx="1.08" />
-          <rect x="72.05" y="62.38" width="2.17" height="7.23" rx="1.08" />
-          <rect x="77.83" y="63.83" width="2.17" height="4.34" rx="1.08" />
-          <path className="intro-roof" d="M14 46 L50 18 L86 46" />
+        <svg className="intro-mark" viewBox="0 0 64 64" aria-hidden="true">
+          <circle className="intro-ring" cx="32" cy="32" r="22" />
+          <rect x="18" y="34" width="3.2" height="8" rx="1.6" />
+          <rect x="24.2" y="28" width="3.2" height="16" rx="1.6" />
+          <rect x="30.4" y="22" width="3.2" height="24" rx="1.6" />
+          <rect x="36.6" y="26" width="3.2" height="18" rx="1.6" />
+          <rect x="42.8" y="32" width="3.2" height="10" rx="1.6" />
         </svg>
       </div>
 

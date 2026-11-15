@@ -4,8 +4,6 @@ Audioserver is a self-hosted multiroom audio server. It collects local files, st
 services, radio and line-in, and plays them in sync on the speakers you already own.
 It can run on its own or as a Loxone Audioserver.
 
-> **Status: 4.0 beta.** Breaking changes can still land between betas.
-
 ## Quick start
 
 ```bash

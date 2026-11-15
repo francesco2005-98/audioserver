@@ -197,14 +197,12 @@ html[data-standalone] .face {
  * mark that was not the product's colour, sitting directly above ten green bars. The mark is one thing
  * and now it is one colour.
  */
-.intro-mark path {
+.intro-mark circle {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 96;
-  stroke-dashoffset: 96;
+  stroke-width: 2.4;
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
   animation: intro-roof 850ms cubic-bezier(0.2, 0.8, 0.2, 1) 480ms forwards;
 }
 
@@ -318,7 +316,7 @@ html[data-standalone] .face {
 @media (prefers-reduced-motion: reduce) {
   .intro-mark,
   .intro-mark rect,
-  .intro-mark path,
+  .intro-mark circle,
   .intro-word,
   .intro-tag {
     animation-duration: 1ms !important;

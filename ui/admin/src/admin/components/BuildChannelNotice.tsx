@@ -30,7 +30,12 @@ export default function BuildChannelNotice({
     return null;
   }
 
-  const version = apiStatus?.version;
+  const version = apiStatus?.version ?? '';
+  // A finished version is a release. The banner only belongs on a build that
+  // still says so in the version itself (for example 1.0.0-beta.1).
+  if (!version.split('+')[0]?.includes('-')) {
+    return null;
+  }
 
   return (
     <div className="build-notice" role="alert">

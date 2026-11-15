@@ -57,9 +57,8 @@ RUN curl -fsSL "https://github.com/ondrej1024/crelay/archive/${CRELAY_REF}.tar.g
 FROM node:24-trixie-slim AS runtime
 ARG BUILD_VERSION
 ARG BUILD_TIMESTAMP
-# Which artifact this is: dev | testing | beta | stable. Unset means dev, because
-# a build that does not claim to be a release is not one.
-ARG BUILD_CHANNEL
+# A published image is a release. Pass BUILD_CHANNEL=dev to label a test build.
+ARG BUILD_CHANNEL=stable
 # YouTube moves under yt-dlp constantly, so a stale pin costs real quality: on 02.04
 # the only format left for an anonymous request was itag 18 — a 642 MB video file
 # carrying 44 kHz AAC — where 07.04 returns itag 251, 154 MB of audio-only opus.

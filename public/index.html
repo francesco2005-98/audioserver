@@ -92,10 +92,24 @@
       }
 
       .mark {
-        width: 74px;
-        height: 59px;
+        width: 72px;
+        height: 72px;
+        padding: 10px;
         color: var(--accent);
+        background: rgb(255 255 255 / 6%);
+        border: 1px solid rgb(255 255 255 / 16%);
+        border-radius: 22px;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%), 0 18px 40px rgb(0 0 0 / 28%);
+        backdrop-filter: blur(16px) saturate(140%);
         view-transition-name: audioserver-mark;
+      }
+
+      .door {
+        background: rgb(255 255 255 / 5%);
+        border: 1px solid rgb(255 255 255 / 14%);
+        border-radius: 22px;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%), 0 16px 36px rgb(0 0 0 / 22%);
+        backdrop-filter: blur(18px) saturate(140%);
       }
 
       .word {
@@ -217,18 +231,13 @@
   <body>
     <main>
       <!-- The roofline over the level meter: the same drawing both bundles open with. -->
-      <svg class="mark" viewBox="8 12 84 68" aria-hidden="true" fill="currentColor">
-        <path d="M14 46 L50 18 L86 46" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-        <rect x="20" y="63.1" width="2.17" height="5.78" rx="1.08" opacity="0.4" />
-        <rect x="25.78" y="59.5" width="2.17" height="13.01" rx="1.08" opacity="0.6" />
-        <rect x="31.57" y="61.66" width="2.17" height="8.67" rx="1.08" opacity="0.8" />
-        <rect x="37.35" y="58.05" width="2.17" height="15.9" rx="1.08" />
-        <rect x="46.03" y="56.6" width="2.89" height="18.8" rx="1.45" />
-        <rect x="54.69" y="58.05" width="2.17" height="15.9" rx="1.08" />
-        <rect x="60.48" y="60.94" width="2.17" height="10.12" rx="1.08" opacity="0.9" />
-        <rect x="66.26" y="58.77" width="2.17" height="14.46" rx="1.08" opacity="0.8" />
-        <rect x="72.05" y="62.38" width="2.17" height="7.23" rx="1.08" opacity="0.7" />
-        <rect x="77.83" y="63.83" width="2.17" height="4.34" rx="1.08" opacity="0.6" />
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true" fill="currentColor">
+        <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="2.4" />
+        <rect x="18" y="34" width="3.2" height="8" rx="1.6" opacity="0.45" />
+        <rect x="24.2" y="28" width="3.2" height="16" rx="1.6" opacity="0.7" />
+        <rect x="30.4" y="22" width="3.2" height="24" rx="1.6" />
+        <rect x="36.6" y="26" width="3.2" height="18" rx="1.6" opacity="0.8" />
+        <rect x="42.8" y="32" width="3.2" height="10" rx="1.6" opacity="0.5" />
       </svg>
 
       <h1 class="word">audioserver</h1>

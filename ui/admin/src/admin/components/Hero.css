@@ -104,10 +104,10 @@ body.is-unpaired .hero-mark {
   transform-box: fill-box;
 }
 
-/* The "roof" chevron draws itself on, like the player intro (iRoof). */
+/* The ring draws itself on. */
 .hero-mark-peak {
-  stroke-dasharray: 96;
-  stroke-dashoffset: 96;
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
   animation: hero-peak-draw 0.85s var(--spring) 0.55s both;
 }
 
@@ -263,11 +263,12 @@ body.is-workspace .hero-tagline {
   align-items: center;
   gap: 0;
   padding: 10px 18px;
-  background: color-mix(in srgb, var(--ink) 2%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 16%);
   border-radius: var(--radius-pill);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   transition: border-color 0.6s ease, background 0.6s ease;
   animation: hero-fade-up 0.7s var(--spring) backwards;
   animation-delay: 2.1s;
