@@ -1,5 +1,6 @@
 import type { SoloistBinaryStatus } from '@/ports/SoloistAdminPort';
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -26,6 +27,34 @@ export function reserveWsPort(): Promise<number> {
       probe.close(() => (port > 0 ? resolve(port) : reject(new Error('no free port'))));
     });
   });
+}
+
+/**
+ * Drops container-bridge addresses out of Soloist's interface list.
+ *
+ * Soloist announces every address getifaddrs returns and lists the Docker
+ * bridge first, so a phone on the LAN never sees the device. Built in the
+ * image; absent in a checkout that has not been packaged, where Soloist runs
+ * exactly as before.
+ */
+const IFACE_FILTER_LIB =
+  process.env.AUDIOSERVER_IFACE_FILTER ?? '/usr/local/lib/libaudioserver-ifaces.so';
+
+/** True when the spawned Soloist will not announce container bridges. */
+export function ifaceFilterActive(): boolean {
+  try {
+    return fs.existsSync(IFACE_FILTER_LIB);
+  } catch {
+    return false;
+  }
+}
+
+function ifaceFilterEnv(): Record<string, string> {
+  if (!ifaceFilterActive()) {
+    return {};
+  }
+  const previous = process.env.LD_PRELOAD?.trim();
+  return { LD_PRELOAD: previous ? `${IFACE_FILTER_LIB} ${previous}` : IFACE_FILTER_LIB };
 }
 
 /** Where the user's own Soloist build lives. Never shipped — Spotify forbids redistributing it. */
@@ -568,7 +597,7 @@ function runTracked(
   const done = new Promise<number | null>((resolve) => {
     try {
       child = spawn(binary, args, {
-        env: { ...process.env, ...env },
+        env: { ...process.env, ...ifaceFilterEnv(), ...env },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (error) {

@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   accountPairingStore,
   hasStoredSession,
+  ifaceFilterActive,
   promotePairedStore,
   signedInSpotifyId,
   startPairing,
@@ -103,7 +104,9 @@ export async function startAccountPairing(params: {
 
   // Soloist announces the device over mDNS on UDP 5353. When that port is already
   // taken it still looks like it is waiting, and the phone never sees anything.
-  if (pairingSeesVirtualNetworks()) {
+  // The image filters those addresses out. Warn only when that filter is not
+  // there, because then Soloist really can announce the bridge instead of the LAN.
+  if (pairingSeesVirtualNetworks() && !ifaceFilterActive()) {
     entry.notice = 'virtual_networks';
     log.warn('soloist may announce a container address instead of the LAN', { accountId });
   }

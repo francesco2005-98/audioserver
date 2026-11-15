@@ -47,6 +47,8 @@ RUN apt-get update \
         libhidapi-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /tmp
+COPY native/audioserver-ifaces.c /tmp/audioserver-ifaces.c
+RUN gcc -shared -fPIC -O2 -o /usr/local/lib/libaudioserver-ifaces.so /tmp/audioserver-ifaces.c -ldl
 RUN curl -fsSL "https://github.com/ondrej1024/crelay/archive/${CRELAY_REF}.tar.gz" -o crelay.tar.gz \
     && tar -xzf crelay.tar.gz \
     && cd "crelay-${CRELAY_REF}/src" \
@@ -100,6 +102,7 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=crelay-builder /usr/local/bin/crelay /usr/local/bin/crelay
+COPY --from=crelay-builder /usr/local/lib/libaudioserver-ifaces.so /usr/local/lib/libaudioserver-ifaces.so
 RUN chmod +x /usr/local/bin/crelay \
     && /usr/local/bin/crelay --help >/dev/null || true
 RUN mkdir -p /app/data/.cache && chown -R node:node /app/data
