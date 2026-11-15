@@ -101,7 +101,7 @@ import { readBuildVersion } from '@/shared/serverVersion';
 import { ConnectionRegistry } from '@/adapters/loxone/ws/connectionRegistry';
 import { LoxoneWsNotifier } from '@/adapters/loxone/ws/notifier';
 import { ServerHeartbeat } from '@/adapters/loxone/ws/serverHeartbeat';
-import { LoxoneConfigService } from '@/adapters/loxone/services/loxoneConfigService';
+import { LoxoneConfigService, onExtensionsChanged } from '@/adapters/loxone/services/loxoneConfigService';
 import { stopWithTimeout } from '@/runtime/stopWithTimeout';
 import { startWithTimeout } from '@/runtime/startWithTimeout';
 
@@ -295,6 +295,7 @@ export function createRuntime(): Runtime {
   const mdnsServices: MdnsLifecycleService[] = [];
   const streamEvents = new StreamEvents();
   const serverHeartbeat = new ServerHeartbeat(connectionRegistry);
+  onExtensionsChanged(() => serverHeartbeat.emit(configPort));
   const sendspinHookRegistry = new SendspinHookRegistry();
   const sendspinLineInService = new SendspinLineInService(lineInRegistry, sendspinHookRegistry, configPort);
   const dlnaLineInService = new DlnaLineInService(lineInRegistry, configPort, ssdpAdvertiser, dlnaHttpPort);

@@ -105,6 +105,7 @@ export type LoxonePairingStatus = {
   } | null;
   lastSetConfigError: { at: number; reason: string } | null;
   steps: Array<{ at: number; port: string; remote: string | null; command: string }>;
+  unhandled?: Array<{ at: number; command: string; count: number }>;
   miniserver: { ip: string | null; serial: string | null };
 };
 

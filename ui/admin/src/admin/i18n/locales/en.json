@@ -1365,7 +1365,9 @@
         "setConfig": "Project received",
         "setConfigSeen": "{{time}}, serial {{serials}}",
         "never": "not yet",
-        "steps": "Latest Miniserver commands ({{count}})"
+        "steps": "Latest Miniserver commands ({{count}})",
+        "unhandled": "Commands without an answer ({{count}}) — please send a screenshot",
+        "unhandledNone": "Paired. So far the Miniserver has sent nothing this server cannot answer."
       }
     },
     "add": {
@@ -1396,7 +1398,7 @@
     "noZonesForDevice": "No zones configured for this device.",
     "addExtension": "Add extension",
     "removeExtension": "Remove",
-    "extensionWaiting": "Add serial {{serial}} in Loxone Config as a Stereo Extension and deploy the project. Its zones show up here afterwards.",
+    "extensionWaiting": "Serial {{serial}}. The Miniserver has been told about it. In Loxone Config, run the Tree Turbo search of this Audioserver, pair the extension and deploy the project. Its zones show up here afterwards. If it does not appear in the search, the Loxone window lists what the Miniserver asked under “Commands without an answer”.",
     "extensionFailedTitle": "Could not add the extension",
     "extensionRemoveFailedTitle": "Could not remove the extension",
     "extensionLimitTitle": "Extension limit reached",

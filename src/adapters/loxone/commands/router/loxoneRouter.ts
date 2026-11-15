@@ -2,6 +2,7 @@ import { createLogger } from '@/shared/logging/logger';
 import type { CommandResult, HandlerFn } from '@/adapters/loxone/commands/types';
 import { buildEmptyResponse } from '@/adapters/loxone/commands/responses';
 import { formatCommand } from '@/adapters/loxone/commands/utils/commandFormatter';
+import { loxonePairingMonitor } from '@/adapters/loxone/pairingMonitor';
 
 const log = createLogger('LoxoneHttp', 'Router');
 
@@ -48,6 +49,7 @@ export class LoxoneRouter {
     }
 
     log.warn('unhandled loxone command', { command: formatCommand(command) });
+    loxonePairingMonitor.unhandled(normalized);
     return buildEmptyResponse(command);
   }
 

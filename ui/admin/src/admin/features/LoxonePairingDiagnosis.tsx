@@ -105,9 +105,35 @@ export default function LoxonePairingDiagnosis({ active }: { active: boolean }):
     ],
   ];
 
+  const unhandled = status.unhandled ?? [];
+  const unhandledList = unhandled.length ? (
+    <details className="zones-loxone-diag__steps" open>
+      <summary>{t('zones.loxone.diag.unhandled', { count: unhandled.length })}</summary>
+      <ol>
+        {unhandled.slice(-15).map((entry) => (
+          <li key={entry.command}>
+            <time>{time(entry.at)}</time> <code>{entry.command}</code>
+            {entry.count > 1 ? ` ×${entry.count}` : ''}
+          </li>
+        ))}
+      </ol>
+    </details>
+  ) : null;
+
+  // Once paired, only what can still go wrong is worth the room: Config actions such as the
+  // Tree Turbo search that this server does not answer yet.
+  if (status.paired) {
+    return (
+      <section className="zones-loxone-diag" aria-live="polite">
+        {unhandledList ?? <p className="zones-loxone-diag__hint">{t('zones.loxone.diag.unhandledNone')}</p>}
+      </section>
+    );
+  }
+
   return (
     <section className="zones-loxone-diag" aria-live="polite">
       <p className={`zones-loxone-diag__verdict zones-loxone-diag__verdict--${verdict.tone}`}>{verdict.text}</p>
+      {unhandledList}
       <dl className="zones-loxone-diag__rows">
         {rows.map(([label, value]) => (
           <div key={label}>

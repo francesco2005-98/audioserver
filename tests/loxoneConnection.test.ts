@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from './testHarness';
 import { loadEnvironment } from '../src/config/environment';
 import { buildLoxoneHttpConfig, loxoneIdentification } from '../src/config/loxone';
-import { LoxoneConfigService, nextExtensionSerial } from '../src/adapters/loxone/services/loxoneConfigService';
+import {
+  LoxoneConfigService,
+  nextExtensionSerial,
+  onExtensionsChanged,
+} from '../src/adapters/loxone/services/loxoneConfigService';
 import { loxonePairingMonitor } from '../src/adapters/loxone/pairingMonitor';
 import {
   buildLoxoneDiscoveryPayload,
@@ -249,11 +253,29 @@ test('an added extension gets the next serial and is reported to the Miniserver 
   assert.equal(nextExtensionSerial('00:D8:61:FD:11:35', ['00D861FD1136']), '00D861FD1137');
   const store = fakeConfigStore(pairingConfig('00D861FD1135'));
   const service = new LoxoneConfigService(zonesStub, store, contentStub, {} as never);
-  const created = await service.addExtension();
-  assert.equal(created.mac, '00D861FD1136');
-  assert.deepEqual(service.getCurrentConfigInfo().extensions, [
-    { serial: '00D861FD1136', name: 'Stereo Extension 1' },
-  ]);
+  let changes = 0;
+  const stopListening = onExtensionsChanged(() => {
+    changes += 1;
+  });
+  try {
+    const created = await service.addExtension();
+    assert.equal(created.mac, '00D861FD1136');
+    assert.deepEqual(service.getCurrentConfigInfo().extensions, [
+      { serial: '00D861FD1136', mac: '00D861FD1136', name: 'Stereo Extension 1' },
+    ]);
+    assert.equal(changes, 1, 'the Miniserver is told at once, not on the next reconnect');
+  } finally {
+    stopListening();
+  }
+});
+
+test('a command nothing answers is kept for the diagnosis', () => {
+  loxonePairingMonitor.reset();
+  loxonePairingMonitor.unhandled('audio/cfg/treeturbo/search');
+  loxonePairingMonitor.unhandled('/audio/cfg/treeturbo/search');
+  const [entry] = loxonePairingMonitor.snapshot().unhandled;
+  assert.equal(entry?.command, 'audio/cfg/treeturbo/search');
+  assert.equal(entry?.count, 2);
 });
 
 test('a project for several other audioservers is not claimed', async () => {

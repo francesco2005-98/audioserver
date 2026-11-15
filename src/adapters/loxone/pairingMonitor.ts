@@ -30,9 +30,17 @@ export type LoxonePairingSnapshot = {
   } | null;
   lastSetConfigError: { at: number; reason: string } | null;
   steps: LoxonePairingStep[];
+  /**
+   * Commands nothing here answers, newest last.
+   *
+   * The Tree Turbo search and a few other Config actions are not documented anywhere. Whatever
+   * the Miniserver sends for them lands here, which is the only way to learn what they are.
+   */
+  unhandled: Array<{ at: number; command: string; count: number }>;
 };
 
 const MAX_STEPS = 40;
+const MAX_UNHANDLED = 20;
 
 // Commands the Miniserver sends while pairing. The app sends many others on the
 // same ports; those do not say anything about pairing.
@@ -52,7 +60,16 @@ class LoxonePairingMonitor {
       lastSetConfig: null,
       lastSetConfigError: null,
       steps: [],
+      unhandled: [],
     };
+  }
+
+  public unhandled(command: string): void {
+    const described = describeCommand(command.replace(/^\/+/, ''));
+    const existing = this.state.unhandled.find((entry) => entry.command === described);
+    const rest = this.state.unhandled.filter((entry) => entry.command !== described);
+    const entry = { at: Date.now(), command: described, count: (existing?.count ?? 0) + 1 };
+    this.state.unhandled = [...rest, entry].slice(-MAX_UNHANDLED);
   }
 
   public reset(): void {

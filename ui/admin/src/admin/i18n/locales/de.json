@@ -1365,7 +1365,9 @@
         "setConfig": "Projekt empfangen",
         "setConfigSeen": "{{time}}, Seriennummer {{serials}}",
         "never": "noch nicht",
-        "steps": "Letzte Befehle des Miniservers ({{count}})"
+        "steps": "Letzte Befehle des Miniservers ({{count}})",
+        "unhandled": "Befehle ohne Antwort ({{count}}) — bitte Screenshot schicken",
+        "unhandledNone": "Gekoppelt. Bisher hat der Miniserver nichts geschickt, was dieser Server nicht beantworten kann."
       }
     },
     "add": {
@@ -1396,7 +1398,7 @@
     "noZonesForDevice": "Keine Zonen für dieses Gerät konfiguriert.",
     "addExtension": "Extension hinzufügen",
     "removeExtension": "Entfernen",
-    "extensionWaiting": "Seriennummer {{serial}} in Loxone Config als Stereo Extension hinzufügen und das Projekt übertragen. Die Zonen erscheinen danach hier.",
+    "extensionWaiting": "Seriennummer {{serial}}. Der Miniserver wurde darüber informiert. In Loxone Config die Tree-Turbo-Suche dieses Audioservers starten, die Extension einlernen und das Projekt übertragen. Die Zonen erscheinen danach hier. Taucht sie in der Suche nicht auf, zeigt das Loxone-Fenster unter „Befehle ohne Antwort“, was der Miniserver gefragt hat.",
     "extensionFailedTitle": "Extension konnte nicht hinzugefügt werden",
     "extensionRemoveFailedTitle": "Extension konnte nicht entfernt werden",
     "extensionLimitTitle": "Extension-Limit erreicht",

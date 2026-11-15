@@ -47,15 +47,20 @@ export class LoxoneConfigService {
     return this.notifier;
   }
 
-  public getCurrentConfigInfo(): { crc32: string | null; extensions: Array<{ serial: string; name: string }> } {
+  public getCurrentConfigInfo(): {
+    crc32: string | null;
+    extensions: Array<{ serial: string; mac: string; name: string }>;
+  } {
     const cfg = this.config.getConfig();
     return {
       crc32: cfg.rawAudioConfig.crc32,
-      // The Miniserver addresses an extension by `serial`. The stored record uses `mac`.
+      // setconfig names an extension by `serial`, the earlier reply used `mac`. Both carry it,
+      // since nothing says which one the Miniserver reads back.
       extensions: (cfg.system.audioserver.extensions ?? []).flatMap((extension) => {
         const serial = extension.mac?.trim().toUpperCase();
         if (!serial) return [];
-        return [{ serial, name: extension.name?.trim() || `Stereo Extension ${serial.slice(-4)}` }];
+        const name = extension.name?.trim() || `Stereo Extension ${serial.slice(-4)}`;
+        return [{ serial, mac: serial, name }];
       }),
     };
   }
@@ -476,6 +481,32 @@ export class LoxoneConfigService {
 
 const MAX_EXTENSIONS = 10;
 
+/**
+ * Told when the set of extensions changes from this side.
+ *
+ * The Miniserver learns about a device from the hardware events, and those used to go out only
+ * when it connected. An extension added in the admin afterwards stayed unknown until the next
+ * reconnect, so the Tree Turbo search had nothing to list.
+ */
+const extensionListeners = new Set<() => void>();
+
+export function onExtensionsChanged(listener: () => void): () => void {
+  extensionListeners.add(listener);
+  return () => {
+    extensionListeners.delete(listener);
+  };
+}
+
+function extensionsChanged(): void {
+  for (const listener of extensionListeners) {
+    try {
+      listener();
+    } catch {
+      // One listener failing must not stop the others or the request.
+    }
+  }
+}
+
 export async function addAudioserverExtension(
   configPort: ConfigPort,
   name?: string,
@@ -497,6 +528,7 @@ export async function addAudioserverExtension(
   if (!created) {
     throw new Error('extension-serial');
   }
+  extensionsChanged();
   return created;
 }
 
@@ -510,6 +542,7 @@ export async function removeAudioserverExtension(configPort: ConfigPort, mac: st
       (entry) => entry.mac?.replace(/[^0-9A-F]/gi, '').toUpperCase() !== needle,
     );
   });
+  extensionsChanged();
 }
 
 /** The next free serial after the Audioserver's own, skipping any already taken. */

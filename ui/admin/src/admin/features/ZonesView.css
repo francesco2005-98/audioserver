@@ -5027,6 +5027,11 @@ button.zones-hub__toggle:disabled {
   font-size: var(--fs-xs);
   word-break: break-all;
 }
+.zones-loxone-diag__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
 .zones-loxone-modal__steps {
   margin: 0 0 16px;
   padding-left: 18px;

@@ -1539,7 +1539,7 @@ export default function ZonesView(): JSX.Element {
           </>
         ) : null}
 
-        <LoxonePairingDiagnosis active={loxoneModalOpen && !standalone && !paired} />
+        <LoxonePairingDiagnosis active={loxoneModalOpen && !standalone} />
 
         {!standalone && !paired ? (
           <ol className="zones-loxone-modal__steps">
